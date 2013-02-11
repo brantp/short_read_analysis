@@ -149,7 +149,7 @@ def lsf_jobs_submit(cmds,outfile,queue='short_serial',bsub_flags='',jobname_base
         namedict = {}
     else:
         namedict = None
-    execbase = 'bsub -q %s %s' % (queue,bsub_flags)
+    execbase = 'bsub -Ep "rm -rf /tmp/core.*" -q %s %s' % (queue,bsub_flags)
     print >> sys.stderr,'Adding jobs'
 
     for execstr in cmds:

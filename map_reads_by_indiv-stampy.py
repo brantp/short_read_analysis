@@ -32,6 +32,7 @@ picard_seqdict_jar = os.path.join(picard_jar_root,'CreateSequenceDictionary.jar'
 stampy_module = 'bio/stampy-1.0.18'
 min_ind_realign = 12
 MAX_RETRY = 3
+MERGE_BAMS_ABOVE = 100
 
 def unfinished_cmds(to_run_dict,finished_ext='.done'):
     cmds = []
@@ -346,13 +347,13 @@ def call_variants_mpileup_lsf(bams,ref,outroot,vcfbase,njobs=100,mpileup_args=''
 
 
 
-def fqname_from_sample_dict(d,read_subpath='reads_by_individual',readnum=1):
+def fqname_from_sample_dict(d,read_subpath='reads_by_individual',readnum=1,read_ext='txt.gz'):
     '''for stampy-fix paths, set (for example):
     read_subpath="reads_by_individual/stampy-fix"
 
     for read 2, set readnum=2
     '''
-    newfq = '%s/%s/%s_lane%s%s/%s_s_%s_%s_sequence%s.txt.gz' % (d['datapath'],read_subpath,d['flowcell'],d['lane'],idxstr_from_idx(d.get('index','')),d['sampleid'],d['lane'],readnum,idxstr_from_idx(d.get('index','')))
+    newfq = '%s/%s/%s_lane%s%s/%s_s_%s_%s_sequence%s.%s' % (d['datapath'],read_subpath,d['flowcell'],d['lane'],idxstr_from_idx(d.get('index','')),d['sampleid'],d['lane'],readnum,idxstr_from_idx(d.get('index','')),read_ext)
     return newfq
 
 def bam_from_sample_dict(d,suffix,read_subpath='reads_by_individual'):
@@ -387,12 +388,36 @@ def find_paired_reads(reads,verbose=True):
                 ind,suf = re.search('^(.+?)(_index.+?)$',readbase).groups()
                 fmt = 'new'
             except:
-                print >> sys.stderr, 'parse failed for',readbase
-                raise
+                try:
+                    print >> sys.stderr, 'legacy, new parse failed for',readbase,'check "Sample"'
+                    ind,suf = re.search('^(.+?)(_Sample.+?)$',readbase).groups()
+                    fmt = 'sample'
+                except:
+                    print >> sys.stderr, 'parse failed for',readbase
+                    raise
 
         if fmt == 'new':
             readset = set(['1','2'])
             presuf,readnum,postsuf = re.search('(^.+?_L\d{3}_R)(\d)(_.+?)$',suf).groups()
+            if readnum in readset:
+                r2num = (readset-set(readnum)).pop()
+            else:
+                print >> sys.stderr, 'read %s not in valid set %s' % (readnum,readset)
+                raise ValueError
+            matebase = ind+presuf+r2num+postsuf
+            mate = os.path.join(readpath,matebase)
+            if mate in reads:
+                paired.append((read,mate))
+                skip.append(read)
+                skip.append(mate)
+            else:
+                if verbose:
+                    print >> sys.stderr, '%s indicates read 1, \n\tno read 2 (%s) found; treat as unpaired' % (read,mate)
+                unpaired.append(read)
+                skip.append(read)
+        elif fmt == 'sample':
+            readset = set(['1','2'])
+            presuf,readnum,postsuf = re.search('(^.+?\.R)(\d)(\..+?)$',suf).groups()
             if readnum in readset:
                 r2num = (readset-set(readnum)).pop()
             else:
@@ -686,6 +711,19 @@ if __name__ == '__main__':
             os.unlink(f)
             os.unlink(f+'.done')
             print >> sys.stderr,'\r%s' % (i+1),
+
+    # MERGE BAMS IF MORE THAN 100 HERE?
+    # (ALSO REDUCEREADS?)
+    if vcfname is not None and len(rg_ref_bams) > MERGE_BAMS_ABOVE:
+        mergebam = os.path.join(outroot,vcfname+'-all_bam-merged.bam')
+        cmd = 'merge_sams_with_validation.py %s %s' % (mergebam,' '.join(rg_ref_bams))
+        ss = run_safe.safe_script(cmd,mergebam,force_write=True)
+        print >> sys.stderr, 'attempt:\n',ss
+
+        ret = os.system(ss)
+        if ret != 0:
+            raise OSError, 'failed to merge bams'
+        sys.exit()
 
     #PERFORM REALIGNMENT IF SELECTED
     if opts.realign:
