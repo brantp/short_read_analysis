@@ -714,16 +714,16 @@ if __name__ == '__main__':
 
     # MERGE BAMS IF MORE THAN 100 HERE?
     # (ALSO REDUCEREADS?)
-    if vcfname is not None and len(rg_ref_bams) > MERGE_BAMS_ABOVE:
-        mergebam = os.path.join(outroot,vcfname+'-all_bam-merged.bam')
-        cmd = 'merge_sams_with_validation.py %s %s' % (mergebam,' '.join(rg_ref_bams))
-        ss = run_safe.safe_script(cmd,mergebam,force_write=True)
-        print >> sys.stderr, 'attempt:\n',ss
-
-        ret = os.system(ss)
-        if ret != 0:
-            raise OSError, 'failed to merge bams'
-        sys.exit()
+    #if vcfname is not None and len(rg_ref_bams) > MERGE_BAMS_ABOVE:
+    #    mergebam = os.path.join(outroot,vcfname+'-all_bam-merged.bam')
+    #    cmd = 'merge_sams_with_validation.py %s %s' % (mergebam,' '.join(rg_ref_bams))
+    #    ss = run_safe.safe_script(cmd,mergebam,force_write=True)
+    #    print >> sys.stderr, 'attempt:\n',ss
+    #
+    #    ret = os.system(ss)
+    #    if ret != 0:
+    #        raise OSError, 'failed to merge bams'
+    #    sys.exit()
 
     #PERFORM REALIGNMENT IF SELECTED
     if opts.realign:
