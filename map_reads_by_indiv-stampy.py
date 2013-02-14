@@ -478,7 +478,7 @@ if __name__ == '__main__':
     #create command line parser
     parser = argparse.ArgumentParser(description='performs stampy mapping')
     parser.add_argument('-v','--vcfname',default=None,help='if vcfname (filename) is supplied, will run GATK with --gatk_argstr and any additional BAM files specified using -a. VCF will be created in OUTROOT'+ds)
-    parser.add_argument('-s','--stampy_argstr',default="'--sensitive --substitutionrate=0.02'",type=eval,help='arguments passed to stampy. Must be single AND double quoted for spaces'+ds)
+    parser.add_argument('-s','--stampy_argstr',default="'--sensitive --substitutionrate=0.02 --maxbasequal=60'",type=eval,help='arguments passed to stampy. Must be single AND double quoted for spaces'+ds)
     parser.add_argument('-g','--gatk_argstr',default="'-out_mode EMIT_ALL_CONFIDENT_SITES -dcov 100'",type=eval,help='arguments passed to GATK (only relevant if --outvcf specified) Must be single AND double quoted for spaces.'+ds)
     parser.add_argument('-gh','--gatkhaplo_argstr',default="'-out_mode EMIT_ALL_CONFIDENT_SITES -dr 50'",type=eval,help='arguments passed to GATKHaplotypeCaller (only relevant if --outvcf specified) Must be single AND double quoted for spaces.'+ds)
     parser.add_argument('-mp','--mpileup_argstr',default="''",type=eval,help='arguments passed to mpileup (only relevant if --outvcf specified) Must be single AND double quoted for spaces, e.g. "\'-r chr3\'"'+ds)
@@ -490,7 +490,8 @@ if __name__ == '__main__':
     parser.add_argument('-n','--num_batches',default=100,type=int,help='number of LSF batches to submit.'+ds)
     parser.add_argument('-q','--lsf_queue',default='normal_serial',type=str,help='LSF submission queue.'+ds)
     parser.add_argument('-tr','--target_regions',default=None,help='file of sequences (one seq ID per line) to genotype across.'+ds)
-    
+
+    parser.add_argument('--no_merge',action='store_true',help='do not perform bam merge after mapping (regardless of number of individual bams)'+ds)
     
     parser.add_argument('-up','--unpair_reads',action='store_true',help='will NOT attempt to pair read1 and read2 files in input reads'+ds)
     parser.add_argument('--realign',action='store_true',help='perform targeted realignment on individual BAM files'+ds)
@@ -714,16 +715,17 @@ if __name__ == '__main__':
 
     # MERGE BAMS IF MORE THAN 100 HERE?
     # (ALSO REDUCEREADS?)
-    #if vcfname is not None and len(rg_ref_bams) > MERGE_BAMS_ABOVE:
-    #    mergebam = os.path.join(outroot,vcfname+'-all_bam-merged.bam')
-    #    cmd = 'merge_sams_with_validation.py %s %s' % (mergebam,' '.join(rg_ref_bams))
-    #    ss = run_safe.safe_script(cmd,mergebam,force_write=True)
-    #    print >> sys.stderr, 'attempt:\n',ss
-    #
-    #    ret = os.system(ss)
-    #    if ret != 0:
-    #        raise OSError, 'failed to merge bams'
-    #    sys.exit()
+    if vcfname is not None and len(rg_ref_bams) > MERGE_BAMS_ABOVE and not opts.no_merge:
+        mergebam = os.path.join(outroot,vcfname+'-all_bam-merged.bam')
+        cmd = 'merge_sams_with_validation.py %s %s' % (mergebam,' '.join(rg_ref_bams))
+        ss = run_safe.safe_script(cmd,mergebam,force_write=True)
+        print >> sys.stderr, 'attempt:\n',ss
+    
+        ret = os.system(ss)
+        if ret != 0:
+            raise OSError, 'failed to merge bams'
+        rg_ref_bams_old = rg_ref_bams
+        rg_ref_bams = [mergebam]
 
     #PERFORM REALIGNMENT IF SELECTED
     if opts.realign:
