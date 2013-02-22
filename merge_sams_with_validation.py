@@ -4,11 +4,12 @@ import os,sys,run_safe
 
 bam,sams = sys.argv[1],sys.argv[2:]
 
-picard_root = '/n/home08/brantp/src/picard_svn/trunk/dist/'
-picardRAM = 4
-max_temp = 500
-max_records = 5000000
-MAX_PER_RUN = 500
+#picard_root = '/n/home08/brantp/src/picard_svn/trunk/dist/'
+picard_root = '/n/home08/brantp/src/picard_svn_20130220/trunk/dist/'
+picardRAM = 6
+max_temp = 5000
+max_records = 1500000
+MAX_PER_RUN = 100
 RM_SAMS = False #always overridden to True for sam/bams created as intermediates in large merge sets
 
 #revolting hack

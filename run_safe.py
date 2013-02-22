@@ -16,7 +16,7 @@ def safe_script(cmd,donefile,donesuffix='.done',scriptfile=None,force_write=Fals
     return 'run_safe.py \"%s\" %s' % (scriptfile,donefile+donesuffix)
 
 def add_cmd(to_run_dict,finished_base,cmd,finished_ext='.done',**kwargs):
-    to_run_dict[finished_base+finished_ext] = safe_script(cmd,finished_base,finished_ext,**kwargs)
+    to_run_dict[finished_base] = safe_script(cmd,finished_base,finished_ext,**kwargs)
 
 def unfinished_cmds(to_run_dict,finished_ext='.done'):
     cmds = []

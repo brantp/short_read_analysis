@@ -32,7 +32,7 @@ picard_seqdict_jar = os.path.join(picard_jar_root,'CreateSequenceDictionary.jar'
 stampy_module = 'bio/stampy-1.0.18'
 min_ind_realign = 12
 MAX_RETRY = 3
-MERGE_BAMS_ABOVE = 100
+MERGE_BAMS_ABOVE = 50
 
 def unfinished_cmds(to_run_dict,finished_ext='.done'):
     cmds = []
@@ -373,7 +373,13 @@ def find_paired_reads(reads,verbose=True):
     for read in reads:
         if read in skip:
             continue
-        
+
+        if read.endswith('.merge.fastq.gz'):
+            print >> sys.stderr, '%s indicates merged PE reads; skip pairing'
+            unpaired.append(read)
+            skip.append(read)
+            continue
+            
         readpath,readbase = os.path.split(read)
         try:
             if '_s_' in readbase:
