@@ -21,6 +21,7 @@ from radtag_denovo import preprocess_radtag_lane
 import run_safe
 import time
 
+compress_vcf = True
 picardRAM = 4
 #gatk_jar = '/n/home08/brantp/src/GATK-git/dist/GenomeAnalysisTK.jar'
 #gatk2_jar = '/n/home08/brantp/src/GenomeAnalysisTK-2.1-8-g5efb575/GenomeAnalysisTK.jar'
@@ -239,14 +240,19 @@ def start_end_strs(li):
     end = '%s-%s' % (c,e)
     return start,end
 
-def call_variants_gatk_lsf(bams,ref,outroot,vcfbase,njobs=100,gatk_program='UnifiedGenotyper',gatk_args='-out_mode EMIT_ALL_CONFIDENT_SITES -dcov 50 -glm BOTH',gatk_jar=gatk_jar,gatk_ram=4,tmpdir=None,queue='normal_serial',job_ram='30000',MAX_RETRY=MAX_RETRY,include_regions=None):
+def call_variants_gatk_lsf(bams,ref,outroot,vcfbase,njobs=100,gatk_program='UnifiedGenotyper',gatk_args='-out_mode EMIT_ALL_CONFIDENT_SITES -dcov 50 -glm BOTH',gatk_jar=gatk_jar,gatk_ram=4,tmpdir=None,queue='normal_serial',job_ram='30000',MAX_RETRY=MAX_RETRY,include_regions=None,compress_vcf=True):
     if tmpdir is None:
         tmpdir = os.path.join(outroot,'gatk_tmp')
     bamstr = ' -I '.join(bams)
     regions = partition_reference(ref,njobs,include_regions)
     vcfbasename = vcfbase.endswith('.vcf') and vcfbase[:-4] or vcfbase
     gatkoutvcfbase = '%s-GATK-%s' % (vcfbasename,gatk_program)
-    gatkoutvcf = os.path.join(outroot,gatkoutvcfbase+'.vcf')
+    if compress_vcf:
+        vcfext = '.vcf.gz'
+    else:
+        vcfext = '.vcf'
+        
+    gatkoutvcf = os.path.join(outroot,gatkoutvcfbase+vcfext)
     vcf_parts_root = os.path.join(outroot,gatkoutvcfbase+'-vcf_parts')
     try:
         os.makedirs(vcf_parts_root)
@@ -257,7 +263,7 @@ def call_variants_gatk_lsf(bams,ref,outroot,vcfbase,njobs=100,gatk_program='Unif
     for i,reg in enumerate(regions):
         start,end = start_end_strs(reg)
         regstr = ' -L '.join(reg)
-        partvcf = os.path.join(vcf_parts_root,'%s_%dof%d_%sto%s.vcf' % (gatkoutvcfbase,i,len(regions),start,end))
+        partvcf = os.path.join(vcf_parts_root,'%s_%dof%d_%sto%s%s' % (gatkoutvcfbase,i,len(regions),start,end,vcfext))
         part_sh = os.path.join(vcf_parts_root,'%s_%dof%d_%sto%s.sh' % (gatkoutvcfbase,i,len(regions),start,end))
         cmd = 'java -Xmx%sg -Djava.io.tmpdir=%s -jar  %s -R %s -T %s -o %s %s -I %s -L %s' % (gatk_ram,tmpdir,gatk_jar,ref,gatk_program,partvcf,gatk_args,bamstr,regstr)
         #open(part_sh,'w').write('#!/usr/bin/env bash\n'+cmd+'\n')
@@ -760,27 +766,27 @@ if __name__ == '__main__':
                                njobs=opts.num_batches, gatk_program='UnifiedGenotyper', \
                                gatk_args=opts.gatk_argstr, gatk_jar=gatk_jar, gatk_ram=gatkRAM, \
                                tmpdir=None, queue=opts.lsf_queue, job_ram='30000', MAX_RETRY=MAX_RETRY, \
-                               include_regions=include_regions)
+                               include_regions=include_regions,compress_vcf=True)
         #HaplotypeCaller
         if not opts.skip_haplo:
             call_variants_gatk_lsf(rg_ref_bams, reference_fasta, outroot, vcfname, \
                                    njobs=opts.num_batches, gatk_program='HaplotypeCaller', \
                                    gatk_args=opts.gatkhaplo_argstr, gatk_jar=gatk2_jar, gatk_ram=gatkRAM, \
                                    tmpdir=None, queue=opts.lsf_queue, job_ram='30000', MAX_RETRY=MAX_RETRY, \
-                                   include_regions=include_regions)
+                                   include_regions=include_regions,compress_vcf=True)
 
         if opts.realign:
             call_variants_gatk_lsf(realigned_bams, reference_fasta, outroot, vcfname+'-realign', \
                                    njobs=opts.num_batches, gatk_program='UnifiedGenotyper', \
                                    gatk_args=opts.gatk_argstr, gatk_jar=gatk_jar, gatk_ram=gatkRAM, \
                                    tmpdir=None, queue=opts.lsf_queue, job_ram='30000', MAX_RETRY=MAX_RETRY, \
-                                   include_regions=include_regions)
+                                   include_regions=include_regions,compress_vcf=True)
             if not opts.skip_haplo:
                 call_variants_gatk_lsf(realigned_bams, reference_fasta, outroot, vcfname+'-realign', \
                                        njobs=opts.num_batches, gatk_program='HaplotypeCaller', \
                                        gatk_args=opts.gatkhaplo_argstr, gatk_jar=gatk2_jar, gatk_ram=gatkRAM, \
                                        tmpdir=None, queue=opts.lsf_queue, job_ram='30000', MAX_RETRY=MAX_RETRY, \
-                                       include_regions=include_regions)
+                                       include_regions=include_regions,compress_vcf=True)
         
         #vcfbasename = vcfname.endswith('.vcf') and vcfname[:-4] or vcfname
         #gatkoutvcf = os.path.join(outroot,'%s-GATK.vcf' % vcfbasename)

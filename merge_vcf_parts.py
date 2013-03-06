@@ -10,6 +10,18 @@ from short_read_analysis import map_reads_by_indiv_stampy
 from subprocess import Popen
 import os, sys
 
+def smartopen(filename,*args,**kwargs):
+    '''opens with open unless file ends in .gz, then use gzip.open
+
+    in theory should transparently allow reading of files regardless of compression
+    '''
+    if filename.endswith('.gz'):
+        return gzip.open(filename,*args,**kwargs)
+    else:
+        return open(filename,*args,**kwargs)
+
+open = smartopen #use above for all open()
+
 def head_and_start(vcf):
     fh = open(vcf)
     while 1:
