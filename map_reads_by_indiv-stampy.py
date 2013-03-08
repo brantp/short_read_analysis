@@ -511,6 +511,9 @@ if __name__ == '__main__':
     parser.add_argument('--cleanup',action='store_true',help='remove intermediate .sam files created during mapping'+ds)
     parser.add_argument('--debug',action='store_true',help='print commands but do not run anything'+ds)
     parser.add_argument('--bamcheck',action='store_true',help='force checking bam inputs (do not trust previous validation, even if present)'+ds)
+
+    parser.add_argument('--check_donefiles',action='store_true',help='force remove of .done files with missing .bams'+ds)
+    
     parser.add_argument('--skip_mpileup',action='store_true',help='do not perform samtools mpileup genotyping, even if -v is supplied (i.e. run only GATK)'+ds)
     parser.add_argument('--skip_haplo',action='store_true',help='do not perform GATK HaplotypeCaller genotyping, even if -v is supplied (i.e. run only GATK)'+ds)
 
@@ -619,6 +622,17 @@ if __name__ == '__main__':
                 print >> sys.stderr, 'failed validation, quit'
                 raise OSError
 
+        else:
+            if opts.check_donefiles:
+                donefile = rg_ref_bam+'.done'
+                if os.path.exists(donefile):
+                    print >> sys.stderr, '.done file for bam %s found, but bam is missing; remove %s ...' % (rg_ref_bam,donefile),
+                    ret = os.system('rm -f %s' %  donefile)
+                    if ret == 0:
+                        print >> sys.stderr, 'DONE'
+                    else:
+                        raise OSError, 'FAILED'
+            
         if isinstance(readfile,tuple):
             r1,r2 = readfile
 
