@@ -8,7 +8,7 @@ all parts must have identical field order (#CHROM line must be identical)
 
 from short_read_analysis import map_reads_by_indiv_stampy
 from subprocess import Popen
-import os, sys
+import os, sys, gzip
 
 def smartopen(filename,*args,**kwargs):
     '''opens with open unless file ends in .gz, then use gzip.open
@@ -20,10 +20,8 @@ def smartopen(filename,*args,**kwargs):
     else:
         return open(filename,*args,**kwargs)
 
-open = smartopen #use above for all open()
-
 def head_and_start(vcf):
-    fh = open(vcf)
+    fh = smartopen(vcf)
     while 1:
         l = fh.readline()
         if l == '':
@@ -53,7 +51,7 @@ def order_vcf_parts(vcf_parts,ref):
 
     print >> sys.stderr, 'get contig order from reference %s' % (ref)
 
-    for l in open(ref):
+    for l in smartopen(ref):
         if l.startswith('>'):
             order.append(l[1:].strip().split()[0])
 
@@ -79,14 +77,14 @@ if __name__ == "__main__":
 
     print >> sys.stderr, 'merge %s vcfs, write output to %s' % (len(ordered_parts),opts.output)
 
-    outfh = open(opts.output,'w')
+    outfh = smartopen(opts.output,'w')
 
-    for l in open(ordered_parts[0]):
+    for l in smartopen(ordered_parts[0]):
         outfh.write(l)
     for i,f in enumerate(ordered_parts[1:],1):
         if i%10==0:
             print >> sys.stderr, '\r\t %s / %s' % (i,len(ordered_parts)),
-        for l in open(f):
+        for l in smartopen(f):
             if not l.startswith('#'):
                 outfh.write(l)
     outfh.close()
