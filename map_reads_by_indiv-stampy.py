@@ -27,7 +27,8 @@ picardRAM = 4
 #gatk2_jar = '/n/home08/brantp/src/GenomeAnalysisTK-2.1-8-g5efb575/GenomeAnalysisTK.jar'
 gatk2_jar = '/n/home08/brantp/src/GenomeAnalysisTK-2.2-16-g9f648cb/GenomeAnalysisTK.jar'
 gatk_jar = gatk2_jar
-picard_jar_root = '/n/home08/brantp/src/picard_svn/trunk/dist'
+#picard_jar_root = '/n/home08/brantp/src/picard_svn/trunk/dist'
+picard_jar_root = '/n/home08/brantp/src/picard_svn_20130220/trunk/dist'
 picard_jar = os.path.join(picard_jar_root,'MergeSamFiles.jar')
 picard_seqdict_jar = os.path.join(picard_jar_root,'CreateSequenceDictionary.jar')
 stampy_module = 'bio/stampy-1.0.18'
@@ -46,7 +47,7 @@ def idxstr_from_idx(x):
     return x and '_index%s' % x or ''
 
 def seq_len_from_fasta(fasta,return_order=False):
-    dictfile = fasta+'.dict'
+    dictfile = os.path.splitext(fasta)[0]+'.dict'
     if not os.path.exists(dictfile):
         os.system('java -jar %s REFERENCE=%s OUTPUT=%s' % (picard_seqdict_jar,fasta,dictfile))
     seq_len = {}
@@ -535,6 +536,19 @@ if __name__ == '__main__':
     t = reference_fasta
     if not os.path.exists(outroot): os.makedirs(outroot)
 
+    #create indices for reference if not present
+    samtools_faidx = reference_fasta+'.fai'
+    picard_dict = os.path.splitext(reference_fasta)[0]+'.dict'
+    if not os.path.exists(samtools_faidx):
+        ret = os.system('samtools faidx %s' % reference_fasta)
+        if ret != 0:
+            raise OSError, 'unable to create samtools faidx for reference'
+    if not os.path.exists(picard_dict):
+        ret = os.system('java -jar %s REFERENCE=%s OUTPUT=%s' % (picard_seqdict_jar,reference_fasta,picard_dict))
+        if ret != 0:
+            raise OSError, 'unable to create picard dict for reference'        
+
+
     tb = os.path.splitext(os.path.basename(t))[0]
     bp = stampy_argstr.replace(' ','').replace('=','')
 
@@ -567,7 +581,7 @@ if __name__ == '__main__':
         reads = unpaired+paired
 
     for rfnum,readfile in enumerate(reads):
-        print >> sys.stderr, '\n%s / %s : prepare stampy run for %s' % (rfnum,len(reads),readfile)
+        print >> sys.stderr, '\n%s / %s : prepare stampy run for %s' % (rfnum+1,len(reads),readfile)
         #throughout, tuple indicates PE
         if isinstance(readfile,tuple):
             readroot,readfilebase = os.path.split(readfile[0])
