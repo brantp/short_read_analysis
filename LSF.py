@@ -357,33 +357,38 @@ def lsf_restart_jobs(jobids,keep_prereqs=True,return_kills=False):
         return restartids, restartnames
 	
 def lsf_restart_susp(jobids,outfile='/tmp/restarted_jobs',queue='normal_serial',return_only_restarted_ids=False,namedict=None,remove_old=False):
-	'''current logic just restarts the job as-is, from lsf_get_job_details()
-	obsolete: N.B. if namedict supplied, will return (JOBID, NAMEDICT) tuple!'''
-	stat = lsf_jobs_dict()
-	susp = [k for k,v in stat.items() if v == 'SSUSP' and k in jobids.keys()]
-	if any(susp):
-		restartids, restartnames, kills = lsf_restart_jobs(susp,return_kills=True)
-		if return_only_restarted_ids:
-			if namedict:
-				return restartids,restartnames
-			else:
-				return restartids
-		else:
-			if remove_old:
-				for k in kills:
-					try:
-						del jobids[k]
-						#for now, retain killed jobs in namedict; this could change	
-					except KeyError:
-						pass
+    '''current logic just restarts the job as-is, from lsf_get_job_details()
+    obsolete: N.B. if namedict supplied, will return (JOBID, NAMEDICT) tuple!'''
+    stat = lsf_jobs_dict()
+    susp = [k for k,v in stat.items() if v == 'SSUSP' and k in jobids.keys()]
+    if any(susp):
+        restartids, restartnames, kills = lsf_restart_jobs(susp,return_kills=True)
+        if return_only_restarted_ids:
+            if namedict:
+                return restartids,restartnames
+            else:
+                return restartids
+        else:
+            if remove_old:
+                for k in kills:
+                    try:
+                        del jobids[k]
+                        #for now, retain killed jobs in namedict; this could change	
+                    except KeyError:
+                        pass
 
-			if namedict:
-				jobids.update(restartids)
-				namedict.update(restartnames)
-				return jobids,namedict
-			else:
-				jobids.update(restartids)
-				return jobids
+            if namedict:
+                jobids.update(restartids)
+                namedict.update(restartnames)
+                return jobids,namedict
+            else:
+                jobids.update(restartids)
+                return jobids
+    else:
+        if namedict:
+            return jobids,namedict
+        else:
+            return jobids
 
 def lsf_no_success_from_log(logfile,success_funct=any):
 	'''returns a list of commands that never finished successfully in the supplied lsf log

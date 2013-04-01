@@ -4,6 +4,8 @@
 outputs (stdout) a single vcf
 
 all parts must have identical field order (#CHROM line must be identical)
+
+NOW ONLY WORKS ON GZIPPED FILES
 '''
 
 from short_read_analysis import map_reads_by_indiv_stampy
@@ -77,17 +79,31 @@ if __name__ == "__main__":
 
     print >> sys.stderr, 'merge %s vcfs, write output to %s' % (len(ordered_parts),opts.output)
 
-    outfh = smartopen(opts.output,'w')
-
-    for l in smartopen(ordered_parts[0]):
-        outfh.write(l)
+    cmd = 'cp %s %s' % (ordered_parts[0],opts.output)
+    ret = os.system(cmd)
+    if ret != 0:
+        raise OSError, 'cp failed'
+    
     for i,f in enumerate(ordered_parts[1:],1):
         if i%10==0:
             print >> sys.stderr, '\r\t %s / %s' % (i,len(ordered_parts)),
-        for l in smartopen(f):
-            if not l.startswith('#'):
-                outfh.write(l)
-    outfh.close()
+        cmd = 'zcat %s | grep -v "^#" | gzip -c - >> %s' % (f,opts.output)
+        ret = os.system(cmd)
+        if ret != 0:
+            errstr = 'vcf %s failed merge' % f
+            raise OSError, errstr
+    
+    #outfh = smartopen(opts.output,'w')
+
+    #for l in smartopen(ordered_parts[0]):
+    #    outfh.write(l)
+    #for i,f in enumerate(ordered_parts[1:],1):
+    #    if i%10==0:
+    #        print >> sys.stderr, '\r\t %s / %s' % (i,len(ordered_parts)),
+    #    for l in smartopen(f):
+    #        if not l.startswith('#'):
+    #            outfh.write(l)
+    #outfh.close()
     print >> sys.stderr, '\tdone.'
     
 

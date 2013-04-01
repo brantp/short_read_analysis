@@ -6,7 +6,7 @@ bam,sams = sys.argv[1],sys.argv[2:]
 
 #picard_root = '/n/home08/brantp/src/picard_svn/trunk/dist/'
 picard_root = '/n/home08/brantp/src/picard_svn_20130220/trunk/dist/'
-picardRAM = 6
+picardRAM = 4
 max_temp = 5000
 max_records = 1500000
 MAX_PER_RUN = 100
@@ -37,7 +37,7 @@ else:
     print >> sys.stderr, '\nfailed:\n',mergecmd
     raise OSError, 'merge failed for %s' % bam
 
-valcmd =  'java -Xmx%sg -jar %sValidateSamFile.jar INPUT=%s MODE=SUMMARY MAX_OPEN_TEMP_FILES=%s MAX_RECORDS_IN_RAM=%s IGNORE=MISMATCH_FLAG_MATE_NEG_STRAND IGNORE=MISMATCH_FLAG_MATE_UNMAPPED IGNORE=MISMATCH_MATE_ALIGNMENT_START IGNORE=MISMATCH_MATE_REF_INDEX IGNORE=INVALID_INSERT_SIZE 2> /dev/null' % (picardRAM,picard_root,bam,max_temp,max_records)
+valcmd =  'java -Xmx%sg -jar %sValidateSamFile.jar INPUT=%s MODE=SUMMARY MAX_OPEN_TEMP_FILES=%s MAX_RECORDS_IN_RAM=%s IGNORE=MISMATCH_FLAG_MATE_NEG_STRAND IGNORE=MISMATCH_FLAG_MATE_UNMAPPED IGNORE=MISMATCH_MATE_ALIGNMENT_START IGNORE=MISMATCH_MATE_REF_INDEX IGNORE=INVALID_INSERT_SIZE' % (picardRAM,picard_root,bam,max_temp,max_records)
 
 print >> sys.stderr, valcmd
 ret = os.system(valcmd)
