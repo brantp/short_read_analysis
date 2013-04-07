@@ -1408,3 +1408,15 @@ def write_fastPHASE_genotypes(vcf_data,outbase, keys_to_write = None, indiv_to_w
         ofh.write('# %s\n' % ind)
         ofh.write('%s\n%s\n' % tuple([''.join(li) for li in Util.dezip(chrom_data[ind])]))
     ofh.close()
+
+from short_read_analysis import extract_genotypes_from_mclgr
+def write_smartpca_genotypes(vcf_data,outbase):
+    pm,gt = extract_genotypes_from_mclgr.genotypes_from_vcf_obj(vcf_data,0)
+    extract_genotypes_from_mclgr.output_genotype_file(pm,gt,outbase+'.snp',outbase+'.ancestrymapgeno')
+    open(outbase+'.ind','w').write('\n'.join(['%s\tU\t1' % ind for ind in gt.keys()]))
+    open(outbase+'.par','w').write('genotypename:\t%s.ancestrymapgeno\n' \
+                                   'snpname:\t%s.snp\n' \
+                                   'indivname:\t%s.ind\n' \
+                                   'evecoutname:\t%s.evec\n' \
+                                   'evaloutname:\t%s.eval\n' \
+                                   'snpweightoutname:\t%s.snpweightout\n' % tuple([outbase]*6))
