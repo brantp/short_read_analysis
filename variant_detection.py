@@ -2,8 +2,21 @@ from collections import defaultdict
 import sys, numpy
 import os, sys, re, Util
 import Seq
+import gzip
 
 from subprocess import Popen,PIPE
+
+def smartopen(filename,*args,**kwargs):
+    '''opens with open unless file ends in .gz, then use gzip.open
+
+    in theory should transparently allow reading of files regardless of compression
+    '''
+    if filename.endswith('.gz'):
+        return gzip.open(filename,*args,**kwargs)
+    else:
+        return open(filename,*args,**kwargs)
+
+
 
 def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cut=None,store_indiv_prefix=None,drop_indiv=None,write_thresholded_vcf=None,write_fasta_base=None,ref_in_fasta=False,regions=None,multiallelic_sites='skip',noGQ='skip'):
     '''populates and returns a site:properties dict from vcf file
@@ -25,7 +38,7 @@ def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cu
         print >> sys.stderr, 'PLEASE MAKE SURE YOU KNOW WHAT YOU ARE DOING'
 
     if write_thresholded_vcf is not None:
-        ofh = open(write_thresholded_vcf,'w')
+        ofh = smartopen(write_thresholded_vcf,'w')
 
     if write_fasta_base is not None:
         import Seq
@@ -43,7 +56,7 @@ def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cu
     vcf_data = {}
     
     i = 0
-    for line in open(vcf):
+    for line in smartopen(vcf):
         if write_thresholded_vcf is not None and line.startswith('##'):
             ofh.write(line)
         
