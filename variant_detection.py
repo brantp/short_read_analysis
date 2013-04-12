@@ -607,7 +607,7 @@ def variants_from_sanger(sanger_data,*args):
         for rbase,sbase in zip(refseq,sangseq):
             if rbase != '-':
                 pos += 1
-            if rbase.upper() != sbase.upper() and rbase.upper() != 'N':
+            if rbase.upper() != sbase.upper() and rbase.upper() != 'N' and sbase.upper() != 'N':
                 k = (target,str(refstart+pos))
                 if var_from_sanger[k].has_key(ind):  
                     var_from_sanger[k][ind].append(Seq.undegenerate_iupac(sbase))
@@ -625,7 +625,7 @@ def variants_from_sanger(sanger_data,*args):
             if k in var_from_sanger.keys():
                 if not ind in var_from_sanger[k].keys():
                     var_from_sanger[k][ind] = [Seq.undegenerate_iupac(sbase)]
-            elif rbase == sbase and rbase != 'N':
+            elif rbase == sbase and rbase.upper() != 'N':
                 invar_pos[k].append(ind)
 
     invar_pos_count = {}

@@ -382,7 +382,7 @@ def find_paired_reads(reads,verbose=True):
             continue
 
         if read.endswith('.merge.fastq.gz'):
-            print >> sys.stderr, '%s indicates merged PE reads; skip pairing'
+            print >> sys.stderr, '%s indicates merged PE reads; skip pairing' % '.merge.fastq.gz'
             unpaired.append(read)
             skip.append(read)
             continue
