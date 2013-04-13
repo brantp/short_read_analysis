@@ -609,10 +609,13 @@ def variants_from_sanger(sanger_data,*args):
                 pos += 1
             if rbase.upper() != sbase.upper() and rbase.upper() != 'N' and sbase.upper() != 'N':
                 k = (target,str(refstart+pos))
+                obs_var = Seq.undegenerate_iupac(sbase)
+                if len(obs_var) > 2:
+                    continue
                 if var_from_sanger[k].has_key(ind):  
-                    var_from_sanger[k][ind].append(Seq.undegenerate_iupac(sbase))
+                    var_from_sanger[k][ind].append(obs_var)
                 else:
-                    var_from_sanger[k][ind] = [Seq.undegenerate_iupac(sbase)]
+                    var_from_sanger[k][ind] = [obs_var]
                 var_from_sanger[k]['REF'] = refseq.replace('-','')[pos-1]
 
     invar_pos = defaultdict(list)
@@ -624,7 +627,9 @@ def variants_from_sanger(sanger_data,*args):
             k = (target,str(refstart+pos))
             if k in var_from_sanger.keys():
                 if not ind in var_from_sanger[k].keys():
-                    var_from_sanger[k][ind] = [Seq.undegenerate_iupac(sbase)]
+                    obs_var = Seq.undegenerate_iupac(sbase)
+                    if len(obs_var) <= 2:
+                        var_from_sanger[k][ind] = [obs_var]
             elif rbase == sbase and rbase.upper() != 'N':
                 invar_pos[k].append(ind)
 
