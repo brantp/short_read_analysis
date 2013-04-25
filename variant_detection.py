@@ -18,7 +18,7 @@ def smartopen(filename,*args,**kwargs):
 
 
 
-def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cut=None,store_indiv_prefix=None,drop_indiv=None,write_thresholded_vcf=None,write_fasta_base=None,ref_in_fasta=False,regions=None,multiallelic_sites='skip',noGQ='skip'):
+def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cut=None,store_indiv_prefix=None,drop_indiv=None,keep_indiv=None,write_thresholded_vcf=None,write_fasta_base=None,ref_in_fasta=False,regions=None,multiallelic_sites='skip',noGQ='skip'):
     '''populates and returns a site:properties dict from vcf file
 
     if <store_only> is set, must be a list of fields to retain
@@ -74,11 +74,25 @@ def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cu
             headers = line[1:].split()
             exp_elements = len(line.split())
             FORMAT = headers.index('FORMAT')
+            indivs = headers[FORMAT+1:]
             if write_fasta_base is not None: #DON'T INCLUDE DROP_INDIV
                 if drop_indiv is not None:
                     indivs = list(set(headers[FORMAT+1:]) - set(drop_indiv))
                 else:
                     indivs = headers[FORMAT+1:]
+            if drop_indiv is not None or keep_indiv is not None:
+                all_keep = set(indivs).intersection(set(keep_indiv is None and indivs or keep_indiv)) - set(drop_indiv and drop_indiv or [])
+                all_drop = set(indivs) - all_keep
+                if len(all_keep) <= len(all_drop):
+                    #test keeps
+                    print >> sys.stderr, 'length of keep set (%s) less than length of drop set (%s); use keep' % (len(all_keep),len(all_drop))
+                    keep_indiv = list(all_keep)
+                    drop_indiv = None
+                else:
+                    #test drops
+                    print >> sys.stderr, 'length of keep set (%s) greater than length of drop set (%s); use drop' % (len(all_keep),len(all_drop))
+                    keep_indiv = None
+                    drop_indiv = list(all_drop)
         elif line.startswith('#'):
             continue
         else:
@@ -121,6 +135,7 @@ def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cu
                 if store_indiv_prefix is not None and not ind.startswith(store_indiv_prefix): continue
                 #drop_indiv HERE
                 if drop_indiv is not None and ind in drop_indiv: continue
+                if keep_indiv is not None and not ind in keep_indiv: continue
                 if ':' in gt:
                     this_gt = dict(zip(fields[FORMAT].split(':'),gt.split(':')))
                     if this_gt.has_key('GQ'):
