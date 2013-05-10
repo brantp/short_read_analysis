@@ -10,7 +10,7 @@ picardRAM = 2
 max_temp = 1000
 max_records = 1500000
 MAX_PER_RUN = 100
-RM_SAMS = False #always overridden to True for sam/bams created as intermediates in large merge sets
+RM_SAMS = True #always overridden to True for sam/bams created as intermediates in large merge sets
 
 #revolting hack
 if len(sams) > MAX_PER_RUN:
@@ -20,7 +20,7 @@ if len(sams) > MAX_PER_RUN:
     bam2 = bam+'-2.bam'
     for b,s in [(bam1,sams1),(bam2,sams2)]:
         print >> sys.stderr, '\npre-merge %s (%s parts)\n' % (b,len(s))
-        cmd = 'merge_sams_with_validation.py %s %s' % (b,' '.join(s))
+        cmd = 'merge_sams_no_validation.py %s %s' % (b,' '.join(s))
         ss = run_safe.safe_script(cmd,b,force_write=True)
         print >> sys.stderr, ss
         ret = os.system(ss)
@@ -37,12 +37,14 @@ else:
     print >> sys.stderr, '\nfailed:\n',mergecmd
     raise OSError, 'merge failed for %s' % bam
 
-valcmd =  'java -Xmx%sg -jar %sValidateSamFile.jar INPUT=%s MODE=SUMMARY MAX_OPEN_TEMP_FILES=%s MAX_RECORDS_IN_RAM=%s IGNORE=MISMATCH_FLAG_MATE_NEG_STRAND IGNORE=MISMATCH_FLAG_MATE_UNMAPPED IGNORE=MISMATCH_MATE_ALIGNMENT_START IGNORE=MISMATCH_MATE_REF_INDEX IGNORE=INVALID_INSERT_SIZE' % (picardRAM,picard_root,bam,max_temp,max_records)
+#valcmd =  'java -Xmx%sg -jar %sValidateSamFile.jar INPUT=%s MODE=SUMMARY MAX_OPEN_TEMP_FILES=%s MAX_RECORDS_IN_RAM=%s IGNORE=MISMATCH_FLAG_MATE_NEG_STRAND IGNORE=MISMATCH_FLAG_MATE_UNMAPPED IGNORE=MISMATCH_MATE_ALIGNMENT_START IGNORE=MISMATCH_MATE_REF_INDEX IGNORE=INVALID_INSERT_SIZE' % (picardRAM,picard_root,bam,max_temp,max_records)
 
-print >> sys.stderr, valcmd
-ret = os.system(valcmd)
+#print >> sys.stderr, valcmd
+#ret = os.system(valcmd)
+#if ret == 0:
+#    open(bam+'.valid','w').write('%s\n' % os.path.getsize(bam))
+
 if ret == 0:
-    open(bam+'.valid','w').write('%s\n' % os.path.getsize(bam))
     if RM_SAMS:
         for sam in sams:
             try:

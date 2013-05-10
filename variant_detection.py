@@ -244,6 +244,8 @@ def add_custom_fields(sd):
     sd['fh'] = fract_het(sd['indiv_gt'])
     sd['totcov'] = sum([int(gtd['DP']) for gtd in sd['indiv_gt'].values()])
     sd['numind'] = len(sd['indiv_gt'])
+    sd['aac'] = aac(sd['indiv_gt'])
+    sd['aaf'] = sd['aac'] / (2. * len(sd['indiv_gt']))
     return sd
 
 ### functions for wrangling multiallelic calls
@@ -467,6 +469,18 @@ def maf(indiv_gt):
         a += v['GT'].count('1')
 
     return min(A,a)
+
+def aac(indiv_gt):
+    '''returns the counts of the minor allele for an indiv_gt dict as in vcf_data above'''
+
+    A = 0
+    a = 0
+
+    for v in indiv_gt.values():
+        A += v['GT'].count('0')
+        a += v['GT'].count('1')
+
+    return a
 
 def fract_het(indiv_gt):
     gts = [v['GT'] for v in indiv_gt.values()]
@@ -1199,7 +1213,7 @@ def write_plink_genotypes(vcf_data, outfile, keys_to_write = None, indiv_to_writ
             indiv_to_write = indiv_to_write.union(set(v['indiv_gt'].keys()))
         indiv_to_write = sorted(list(indiv_to_write))
 
-    ofh = open(outfile,'w')
+    ofh = open(outfile+'.ped','w')
 
     idx = 0
     for ind in indiv_to_write:

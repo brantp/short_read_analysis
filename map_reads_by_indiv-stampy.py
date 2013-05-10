@@ -25,7 +25,8 @@ compress_vcf = True
 picardRAM = 4
 #gatk_jar = '/n/home08/brantp/src/GATK-git/dist/GenomeAnalysisTK.jar'
 #gatk2_jar = '/n/home08/brantp/src/GenomeAnalysisTK-2.1-8-g5efb575/GenomeAnalysisTK.jar'
-gatk2_jar = '/n/home08/brantp/src/GenomeAnalysisTK-2.2-16-g9f648cb/GenomeAnalysisTK.jar'
+#gatk2_jar = '/n/home08/brantp/src/GenomeAnalysisTK-2.2-16-g9f648cb/GenomeAnalysisTK.jar'
+gatk2_jar = '/n/home08/brantp/src/GenomeAnalysisTK-2.4-3-g2a7af43/GenomeAnalysisTK.jar'
 gatk_jar = gatk2_jar
 #picard_jar_root = '/n/home08/brantp/src/picard_svn/trunk/dist'
 picard_jar_root = '/n/home08/brantp/src/picard_svn_20130220/trunk/dist'
@@ -505,10 +506,12 @@ if __name__ == '__main__':
     parser.add_argument('-tr','--target_regions',default=None,help='file of sequences (one seq ID per line) to genotype across.'+ds)
 
     parser.add_argument('--no_merge',action='store_true',help='do not perform bam merge after mapping (regardless of number of individual bams)'+ds)
+    parser.add_argument('--fast_merge',action='store_true',help='skip validation in bam merge'+ds)
     
     parser.add_argument('-up','--unpair_reads',action='store_true',help='will NOT attempt to pair read1 and read2 files in input reads'+ds)
     parser.add_argument('--realign',action='store_true',help='perform targeted realignment on individual BAM files'+ds)
     parser.add_argument('--force_realign',action='store_true',help='force realignment (must also specify --realign to use realigned files in genotyping)'+ds)
+    parser.add_argument('--reduce_reads',action='store_true',help='invoke individual-level realignment and ReduceReads on each sample BAM'+ds)
     parser.add_argument('--cleanup',action='store_true',help='remove intermediate .sam files created during mapping'+ds)
     parser.add_argument('--debug',action='store_true',help='print commands but do not run anything'+ds)
     parser.add_argument('--bamcheck',action='store_true',help='force checking bam inputs (do not trust previous validation, even if present)'+ds)
@@ -523,6 +526,12 @@ if __name__ == '__main__':
     parser.add_argument('reads',nargs='+',help='fastq for stampy (qualities should be fastq-33)')
     
     opts = parser.parse_args()
+
+    if opts.reduce_reads:
+        opts.realign = False
+        opts.force_realign = False
+        opts.skip_mpileup = True
+        print >> sys.stderr, '--reduce_reads invoked, --skip_mpileup is enabled and the following options are disabled: --realign --force_realign'
 
     gatkRAM = opts.gatk_ram # gb ram for GATK
 
@@ -618,11 +627,20 @@ if __name__ == '__main__':
 
         #print >> sys.stderr, t, readgroup_arg, readfile
 
+        donefile = rg_ref_bam+'.done'
+        if os.path.exists(rg_ref_bam) and not os.path.exists(donefile): #not necessarily right -- should be a run-time option
+            print >> sys.stderr, 'donefile absent for %s; remove and re-run' % rg_ref_bam
+            os.unlink(rg_ref_bam)
+            
         if os.path.exists(rg_ref_bam):
             #check bam completeness
             bam_validate = rg_ref_bam+'.valid'
             if os.path.exists(bam_validate) and not opts.bamcheck:
-                if os.path.getsize(rg_ref_bam) == float(open(bam_validate).read()):
+                try:
+                    valsize = float(open(bam_validate).read())
+                except ValueError:
+                    valsize = None
+                if valsize and os.path.getsize(rg_ref_bam) == valsize:
                     print >> sys.stderr, 'skip',rg_ref_bam,'(exists; cached validation checked)'
                     continue
             print >> sys.stderr, rg_ref_bam,'found; validate'
@@ -638,7 +656,6 @@ if __name__ == '__main__':
 
         else:
             if opts.check_donefiles:
-                donefile = rg_ref_bam+'.done'
                 if os.path.exists(donefile):
                     print >> sys.stderr, '.done file for bam %s found, but bam is missing; remove %s ...' % (rg_ref_bam,donefile),
                     ret = os.system('rm -f %s' %  donefile)
@@ -753,11 +770,36 @@ if __name__ == '__main__':
             os.unlink(f+'.done')
             print >> sys.stderr,'\r%s' % (i+1),
 
+    # MAPPING COMPLETE
+
+
+    # Genotyping steps follow
+    #  IF --reduced_reads, then realign and reduce before merging to single bam
+    #  otherwise merge into 1 bam, then realign (if --realign) then perform relevant GATK/samtools/whatever steps
+    
+    # run reduced reads (and single-sample realignment)
+    if opts.reduce_reads:
+        to_run_dict = {}
+        rr_rg_ref_bams = []
+        for bam in rg_ref_bams:
+            rr_bam = os.path.splitext(bam)[0] + '.realigned.reduced.bam'
+            rr_done = os.path.splitext(bam)[0] + '.realigned.reduced'
+            rr_cmd = 'realign_reduce_bam.py %s %s' % (bam,reference_fasta)
+            run_safe.add_cmd(to_run_dict,rr_done,rr_cmd,force_write=True)
+            rr_rg_ref_bams.append(rr_bam)
+        logfile = os.path.join(outroot,'lsflog','realign-reduce-log')
+        LSF.lsf_run_until_done(to_run_dict,logfile,opts.lsf_queue,'-R "select[mem>20000]"','realign-reduce',njobs,MAX_RETRY)
+        #switch rg_ref_bams to reduced
+        orig_rg_ref_bams = rg_ref_bams
+        rg_ref_bams = rr_rg_ref_bams
+
     # MERGE BAMS IF MORE THAN 100 HERE?
-    # (ALSO REDUCEREADS?)
     if vcfname is not None and len(rg_ref_bams) > MERGE_BAMS_ABOVE and not opts.no_merge:
         mergebam = os.path.join(outroot,vcfname+'-all_bam-merged.bam')
-        cmd = 'merge_sams_with_validation.py %s %s' % (mergebam,' '.join(rg_ref_bams))
+        if opts.fast_merge:
+            cmd = 'merge_sams_no_validation.py %s %s' % (mergebam,' '.join(rg_ref_bams))
+        else:
+            cmd = 'merge_sams_with_validation.py %s %s' % (mergebam,' '.join(rg_ref_bams))
         ss = run_safe.safe_script(cmd,mergebam,force_write=True)
         print >> sys.stderr, 'attempt:\n',ss
     
