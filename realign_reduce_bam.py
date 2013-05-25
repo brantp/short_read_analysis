@@ -4,6 +4,8 @@
 single bam realignment and reducedreads using GATK
 '''
 
+skip_contigs = ['ruf_bac_7180000001736']
+
 picardRAM = 2
 gatk_ram = 4
 njobs = 50
@@ -41,14 +43,14 @@ intervals_parts = []
 for i,part in enumerate(intervals_parts_regions):
     #reg_str = ' -L '.join(part)
     reg_parts_file = os.path.join(workdir,'part%s.intervals' % (i))
-    open(reg_parts_file,'w').writelines([p+'\n' for p in part])
+    open(reg_parts_file,'w').writelines([p+'\n' for p in part if not p.split(':')[0] in skip_contigs])
     
     intervals_parts_file = os.path.join(workdir,'part%s.RealignTargets.intervals' % (i))
     rtc_part_cmd = 'java -Xmx%sg -jar %s -T RealignerTargetCreator -I %s -R %s -L %s %s -o %s' % \
                    (gatk_ram,gatk_jar,bam,ref,reg_parts_file,targetcreator_opts,intervals_parts_file)
     rtc_ss = run_safe.safe_script(rtc_part_cmd,intervals_parts_file,force_write=True)
     ret = os.system(rtc_ss)
-    if ret == 0:
+    if ret == 0 and os.path.exists(intervals_parts_file):
         print >> sys.stderr, '%s / %s complete' % (i+1,len(intervals_parts_regions))
     else:
         errstr = 'failed on %s' % intervals_parts_file
@@ -75,7 +77,7 @@ ir_cmd = 'java -Xmx%sg -jar %s -T IndelRealigner -model USE_SW -I %s -R %s --tar
 
 ir_ss = run_safe.safe_script(ir_cmd,realigned_bam,force_write=True)
 ret = os.system(ir_ss)
-if ret == 0:
+if ret == 0 and os.path.exists(realigned_bam):
     print >> sys.stderr, 'IndelRealigner finished'
 else:
     errstr = 'IndelRealigner failed'
@@ -88,7 +90,7 @@ rr_cmd = 'java -Xmx%sg -jar %s -T ReduceReads -I %s -R %s %s -o %s' % \
 rr_ss = run_safe.safe_script(rr_cmd,reduced_bam,force_write=True)
 print rr_ss
 ret = os.system(rr_ss)
-if ret == 0:
+if ret == 0 and os.path.exists(reduced_bam):
     print >> sys.stderr, 'ReduceReads finished'
 else:
     errstr = 'ReduceReads failed'

@@ -10,7 +10,7 @@ picardRAM = 2
 max_temp = 1000
 max_records = 1500000
 MAX_PER_RUN = 100
-RM_SAMS = True #always overridden to True for sam/bams created as intermediates in large merge sets
+RM_SAMS = False #always overridden to True for sam/bams created as intermediates in large merge sets
 
 #revolting hack
 if len(sams) > MAX_PER_RUN:
@@ -24,14 +24,14 @@ if len(sams) > MAX_PER_RUN:
         ss = run_safe.safe_script(cmd,b,force_write=True)
         print >> sys.stderr, ss
         ret = os.system(ss)
-        if ret != 0:
+        if ret != 0 or not os.path.exists(b):
             raise OSError, 'pre-merge failed'
     sams = [bam1,bam2]
     RM_SAMS = True
     
 mergecmd = 'java -Xmx%sg -jar %sMergeSamFiles.jar INPUT=%s OUTPUT=%s MERGE_SEQUENCE_DICTIONARIES=true VALIDATION_STRINGENCY=LENIENT; samtools index %s' % (picardRAM,picard_root,' INPUT='.join(sams), bam, bam)
 ret = os.system(mergecmd)
-if ret == 0:
+if ret == 0 and os.path.exists(bam):
     print >> sys.stderr, '\nmerge complete\n'
 else:
     print >> sys.stderr, '\nfailed:\n',mergecmd

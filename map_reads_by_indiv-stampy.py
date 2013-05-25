@@ -32,10 +32,13 @@ gatk_jar = gatk2_jar
 picard_jar_root = '/n/home08/brantp/src/picard_svn_20130220/trunk/dist'
 picard_jar = os.path.join(picard_jar_root,'MergeSamFiles.jar')
 picard_seqdict_jar = os.path.join(picard_jar_root,'CreateSequenceDictionary.jar')
-stampy_module = 'bio/stampy-1.0.18'
+#stampy_module = 'bio/stampy-1.0.18'
+stampy_module = 'bio/stampy-1.0.21_python2.7.3'
 min_ind_realign = 12
 MAX_RETRY = 3
 MERGE_BAMS_ABOVE = 50
+
+skip_contigs = ['ruf_bac_7180000001736']
 
 def unfinished_cmds(to_run_dict,finished_ext='.done'):
     cmds = []
@@ -97,7 +100,7 @@ def partition_reference(fasta,parts,include_regions=None):
                 seqpos += incl_this
     return run_parts
         
-def realign_bams_lsf(bams,ref,outroot,njobs,min_ind_realign,queue='normal_serial',job_ram='20000',targetcreator_opts='--maxIntervalSize 5000',gatk_jar=gatk_jar,gatk_ram=8,force_links=False,MAX_RETRY=MAX_RETRY):
+def realign_bams_lsf(bams,ref,outroot,njobs,min_ind_realign,queue='normal_serial',job_ram='20000',targetcreator_opts='--maxIntervalSize 5000',gatk_jar=gatk_jar,gatk_ram=8,force_links=False,MAX_RETRY=MAX_RETRY,fallback_queue=''):
     '''force_links replaces existing symlinks
     job ram in MB
     '''
@@ -172,6 +175,8 @@ def realign_bams_lsf(bams,ref,outroot,njobs,min_ind_realign,queue='normal_serial
 
         #replace with run_until_done
         LSF.lsf_run_until_done(to_run_dict,logfile,queue,'-R "select[mem>%s]"' % job_ram, 'targetcreator',njobs,MAX_RETRY)
+        if fallback_queue:
+            LSF.lsf_run_until_done(to_run_dict,logfile,fallback_queue,'-R "select[mem>%s]"' % job_ram, 'targetcreator',njobs,MAX_RETRY)
         
         #cmds = unfinished_cmds(to_run_dict)
         #while cmds:
@@ -217,6 +222,8 @@ def realign_bams_lsf(bams,ref,outroot,njobs,min_ind_realign,queue='normal_serial
 
         logfile = os.path.join(realign_root,'logs','IndelRealigner')
         LSF.lsf_run_until_done(to_run_dict,logfile,queue,'-R "select[mem>%s]"' % job_ram, 'realigner',njobs,MAX_RETRY)
+        if fallback_queue:
+            LSF.lsf_run_until_done(to_run_dict,logfile,fallback_queue,'-R "select[mem>%s]"' % job_ram, 'realigner',njobs,MAX_RETRY)
         #cmds = unfinished_cmds(to_run_dict)
         #while cmds:
         #    jobids,namedict = LSF.lsf_jobs_submit(cmds,logfile,queue,'-R "select[mem>%s]"' % job_ram, jobname_base='realigner')
@@ -242,7 +249,7 @@ def start_end_strs(li):
     end = '%s-%s' % (c,e)
     return start,end
 
-def call_variants_gatk_lsf(bams,ref,outroot,vcfbase,njobs=100,gatk_program='UnifiedGenotyper',gatk_args='-out_mode EMIT_ALL_CONFIDENT_SITES -dcov 50 -glm BOTH',gatk_jar=gatk_jar,gatk_ram=4,tmpdir=None,queue='normal_serial',job_ram='30000',MAX_RETRY=MAX_RETRY,include_regions=None,compress_vcf=True):
+def call_variants_gatk_lsf(bams,ref,outroot,vcfbase,njobs=100,gatk_program='UnifiedGenotyper',gatk_args='-out_mode EMIT_ALL_CONFIDENT_SITES -dcov 50 -glm BOTH',gatk_jar=gatk_jar,gatk_ram=4,tmpdir=None,queue='normal_serial',job_ram='30000',MAX_RETRY=MAX_RETRY,include_regions=None,compress_vcf=True,fallback_queue=''):
     if tmpdir is None:
         tmpdir = os.path.join(outroot,'gatk_tmp')
     bamstr = ' -I '.join(bams)
@@ -263,6 +270,9 @@ def call_variants_gatk_lsf(bams,ref,outroot,vcfbase,njobs=100,gatk_program='Unif
 
     to_run_dict = {}
     for i,reg in enumerate(regions):
+        reg = [r for r in reg if not r.split(':')[0] in skip_contigs]
+        if len(reg) == 0:
+            continue
         start,end = start_end_strs(reg)
         regstr = ' -L '.join(reg)
         partvcf = os.path.join(vcf_parts_root,'%s_%dof%d_%sto%s%s' % (gatkoutvcfbase,i,len(regions),start,end,vcfext))
@@ -270,10 +280,12 @@ def call_variants_gatk_lsf(bams,ref,outroot,vcfbase,njobs=100,gatk_program='Unif
         cmd = 'java -Xmx%sg -Djava.io.tmpdir=%s -jar  %s -R %s -T %s -o %s %s -I %s -L %s' % (gatk_ram,tmpdir,gatk_jar,ref,gatk_program,partvcf,gatk_args,bamstr,regstr)
         #open(part_sh,'w').write('#!/usr/bin/env bash\n'+cmd+'\n')
         #os.system('chmod +x %s' % part_sh)
-        to_run_dict[partvcf] = run_safe.safe_script(cmd,partvcf)
+        to_run_dict[partvcf] = run_safe.safe_script(cmd,partvcf,force_write=True)
 
     logfile = os.path.join(vcf_parts_root,'logs',gatk_program)
     LSF.lsf_run_until_done(to_run_dict,logfile,queue,'-R "select[mem>%s]"' % job_ram, 'gatk',njobs,MAX_RETRY)
+    if fallback_queue:
+        LSF.lsf_run_until_done(to_run_dict,logfile,fallback_queue,'-R "select[mem>%s]"' % job_ram, 'gatk',njobs,MAX_RETRY)
     #cmds = unfinished_cmds(to_run_dict)
     #while cmds:
     #    jobids,namedict = LSF.lsf_jobs_submit(cmds,logfile,'normal_serial','-R "select[mem>30000]"', jobname_base='gatk')
@@ -503,6 +515,8 @@ if __name__ == '__main__':
     parser.add_argument('-r','--reads_per_part',default=100000,type=int,help='target number of reads for each stampy process, used to calculate stampy --processpart.'+ds)
     parser.add_argument('-n','--num_batches',default=100,type=int,help='number of LSF batches to submit.'+ds)
     parser.add_argument('-q','--lsf_queue',default='normal_serial',type=str,help='LSF submission queue.'+ds)
+    parser.add_argument('-fbq','--fallback_queue',default='',type=str,help='fallback LSF submission queue; invoked after MAX_RETRY failed LSF reruns on --lsf_queue.'+ds)
+
     parser.add_argument('-tr','--target_regions',default=None,help='file of sequences (one seq ID per line) to genotype across.'+ds)
 
     parser.add_argument('--no_merge',action='store_true',help='do not perform bam merge after mapping (regardless of number of individual bams)'+ds)
@@ -565,11 +579,14 @@ if __name__ == '__main__':
     ghash = t+'.sthash'
 
     if not os.path.exists(gidx):
+        #print >> sys.stderr, 'ssh $HOSTNAME "module load %s; stampy.py -G %s %s"' % (stampy_module,t,t)
         os.system('ssh $HOSTNAME "module load %s; stampy.py -G %s %s"' % (stampy_module,t,t))
+        #time.sleep(5)
         if not os.path.exists(gidx):
             raise OSError, gidx+' does not exist'
     if not os.path.exists(ghash):
         os.system('ssh $HOSTNAME "module load %s; stampy.py -g %s -H %s"' % (stampy_module,t,t))
+        #time.sleep(5)
         if not os.path.exists(ghash):
             raise OSError, ghash+' does not exist'
        
@@ -793,6 +810,14 @@ if __name__ == '__main__':
         orig_rg_ref_bams = rg_ref_bams
         rg_ref_bams = rr_rg_ref_bams
 
+    missing_bams = []
+    for b in rg_ref_bams:
+        if not os.path.exists(b):
+            missing_bams.append(b)
+    if len(missing_bams) != 0:
+        print >> sys.stderr, 'the following inputs are missing:\n\t%s' % ('\n\t'.join(missing_bams))
+        raise ValueError, 'missing bams for merge'
+
     # MERGE BAMS IF MORE THAN 100 HERE?
     if vcfname is not None and len(rg_ref_bams) > MERGE_BAMS_ABOVE and not opts.no_merge:
         mergebam = os.path.join(outroot,vcfname+'-all_bam-merged.bam')
@@ -815,7 +840,7 @@ if __name__ == '__main__':
     #PERFORM REALIGNMENT IF SELECTED
     if opts.realign:
         #do realignment
-        realigned_bams = realign_bams_lsf(rg_ref_bams,reference_fasta,outroot,njobs,min_ind_realign,queue=opts.lsf_queue,gatk_ram=gatkRAM,force_links=opts.force_realign)
+        realigned_bams = realign_bams_lsf(rg_ref_bams,reference_fasta,outroot,njobs,min_ind_realign,queue=opts.lsf_queue,gatk_ram=gatkRAM,force_links=opts.force_realign,fallback_queue=opts.fallback_queue)
         
         
     
@@ -836,27 +861,27 @@ if __name__ == '__main__':
                                njobs=opts.num_batches, gatk_program='UnifiedGenotyper', \
                                gatk_args=opts.gatk_argstr, gatk_jar=gatk_jar, gatk_ram=gatkRAM, \
                                tmpdir=None, queue=opts.lsf_queue, job_ram='30000', MAX_RETRY=MAX_RETRY, \
-                               include_regions=include_regions,compress_vcf=True)
+                               include_regions=include_regions,compress_vcf=True,fallback_queue=opts.fallback_queue)
         #HaplotypeCaller
         if not opts.skip_haplo:
             call_variants_gatk_lsf(rg_ref_bams, reference_fasta, outroot, vcfname, \
                                    njobs=opts.num_batches, gatk_program='HaplotypeCaller', \
                                    gatk_args=opts.gatkhaplo_argstr, gatk_jar=gatk2_jar, gatk_ram=gatkRAM, \
                                    tmpdir=None, queue=opts.lsf_queue, job_ram='30000', MAX_RETRY=MAX_RETRY, \
-                                   include_regions=include_regions,compress_vcf=True)
+                                   include_regions=include_regions,compress_vcf=True,fallback_queue=opts.fallback_queue)
 
         if opts.realign:
             call_variants_gatk_lsf(realigned_bams, reference_fasta, outroot, vcfname+'-realign', \
                                    njobs=opts.num_batches, gatk_program='UnifiedGenotyper', \
                                    gatk_args=opts.gatk_argstr, gatk_jar=gatk_jar, gatk_ram=gatkRAM, \
                                    tmpdir=None, queue=opts.lsf_queue, job_ram='30000', MAX_RETRY=MAX_RETRY, \
-                                   include_regions=include_regions,compress_vcf=True)
+                                   include_regions=include_regions,compress_vcf=True,fallback_queue=opts.fallback_queue)
             if not opts.skip_haplo:
                 call_variants_gatk_lsf(realigned_bams, reference_fasta, outroot, vcfname+'-realign', \
                                        njobs=opts.num_batches, gatk_program='HaplotypeCaller', \
                                        gatk_args=opts.gatkhaplo_argstr, gatk_jar=gatk2_jar, gatk_ram=gatkRAM, \
                                        tmpdir=None, queue=opts.lsf_queue, job_ram='30000', MAX_RETRY=MAX_RETRY, \
-                                       include_regions=include_regions,compress_vcf=True)
+                                       include_regions=include_regions,compress_vcf=True,fallback_queue=opts.fallback_queue)
         
         #vcfbasename = vcfname.endswith('.vcf') and vcfname[:-4] or vcfname
         #gatkoutvcf = os.path.join(outroot,'%s-GATK.vcf' % vcfbasename)

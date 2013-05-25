@@ -34,9 +34,15 @@ if __name__ == '__main__':
         mapf = mapfile
         mIDf = False
 
+    if ',' in db:
+        phenotypes = []
+        for db_i in db.split(','):
+            phenotypes.extend(preprocess_radtag_lane.get_table_as_dict(db_i,suppress_fc_check=True))
+    else:
+        phenotypes = preprocess_radtag_lane.get_table_as_dict(db,suppress_fc_check=True)
+    
     maploci,genotypes = extract_genotypes_from_mclgr.load_cross_radtag_genotypes(mapf,mIDf)
-    phenotypes = preprocess_radtag_lane.get_table_as_dict(db,suppress_fc_check=True)
-
+    
     phenomaploci,phenomap = add_pheno_to_map(phenotypes,maploci,genotypes)
     print >> sys.stderr, '%s pheno+map loci, %s lines' % (len(phenomaploci),len(phenomap))
     og,mID = extract_genotypes_from_mclgr.output_cross_radtag_genotypes(phenomaploci,phenomap,outfile)
