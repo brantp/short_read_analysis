@@ -38,7 +38,7 @@ min_ind_realign = 12
 MAX_RETRY = 3
 MERGE_BAMS_ABOVE = 50
 
-skip_contigs = ['ruf_bac_7180000001736']
+skip_contigs = [] #['ruf_bac_7180000001736']
 
 def unfinished_cmds(to_run_dict,finished_ext='.done'):
     cmds = []
@@ -817,6 +817,10 @@ if __name__ == '__main__':
     if len(missing_bams) != 0:
         print >> sys.stderr, 'the following inputs are missing:\n\t%s' % ('\n\t'.join(missing_bams))
         raise ValueError, 'missing bams for merge'
+
+    if vcfname is None:
+        print >> sys.stderr, 'alignment complete; subsequent steps only invoked if -v / --vcfname set'
+        sys.exit(0)
 
     # MERGE BAMS IF MORE THAN 100 HERE?
     if vcfname is not None and len(rg_ref_bams) > MERGE_BAMS_ABOVE and not opts.no_merge:

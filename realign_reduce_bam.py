@@ -4,7 +4,8 @@
 single bam realignment and reducedreads using GATK
 '''
 
-skip_contigs = ['ruf_bac_7180000001736']
+#skip_contigs = ['ruf_bac_7180000001736']
+skip_contigs = []
 
 picardRAM = 2
 gatk_ram = 4
