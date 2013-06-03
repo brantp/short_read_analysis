@@ -1467,3 +1467,44 @@ def write_smartpca_genotypes(vcf_data,outbase):
                                    'evecoutname:\t%s.evec\n' \
                                    'evaloutname:\t%s.eval\n' \
                                    'snpweightoutname:\t%s.snpweightout\n' % tuple([outbase]*6))
+
+def likelihood_from_PLstr(pls):
+    '''pls is assumed to be a comma-separated string
+    '''
+    pl = map(dephred,map(float,pls.split(',')))
+    return [p/sum(pl) for p in pl]
+    
+def vcf_sort(k):
+    return (k[0],int(k[1]))
+
+def write_wigs_genotypes(vcf_data,indiv_lists,outbase,blocks,treatments,prefix=''):
+    '''prefix is for individual ids (hack for "RB" in enclosures)
+    '''
+    site_list = sorted(vcf_data.keys(), key=vcf_sort)
+
+    sitefile = outbase+'-wigs-sites.txt'
+    genofile = outbase+'-wigs-geno.txt'
+
+    fh = open(sitefile,'w')
+    fh.writelines([s.__repr__()+'\n' for s in site_list])
+    fh.close()
+
+    fh = open(genofile,'w')
+    fh.write('%s %s\n' % (len(site_list),len(indiv_lists)))
+    fh.write(' '.join(map(str,map(len,indiv_lists))))
+    fh.write('\n')
+    fh.write(' '.join(map(str,blocks)))
+    fh.write('\n')
+    fh.write(' '.join(map(str,treatments)))
+    fh.write('\n')
+    
+    for pop_n,indivs in enumerate(indiv_lists):
+        for loc_n,k in enumerate(site_list):
+            for ind_n,indiv in enumerate(indivs):
+                line_head = '%s %s %s ' % (pop_n,loc_n,ind_n)
+                if vcf_data[k]['indiv_gt'].has_key(prefix+indiv):
+                    line_data = '%s %s %s\n' % tuple(likelihood_from_PLstr(vcf_data[k]['indiv_gt'][prefix+indiv]['PL']))
+                else:
+                    line_data = '0 0 0\n'
+                fh.write(line_head+line_data)
+    fh.close()
