@@ -1199,7 +1199,7 @@ def write_tassel_genotypes(vcf_data, outfile, keys_to_write = None, indiv_to_wri
 
     ofh.close()
     
-def write_plink_genotypes(vcf_data, outfile, keys_to_write = None, indiv_to_write = None):
+def write_plink_genotypes(vcf_data, outfile, keys_to_write = None, indiv_to_write = None, pheno_db = None, id_col = None, pheno_col = None, id_prefix = ''):
 
     if keys_to_write is None:
         keys_to_write = vcf_data.keys()
@@ -1213,21 +1213,44 @@ def write_plink_genotypes(vcf_data, outfile, keys_to_write = None, indiv_to_writ
             indiv_to_write = indiv_to_write.union(set(v['indiv_gt'].keys()))
         indiv_to_write = sorted(list(indiv_to_write))
 
-    ofh = open(outfile+'.ped','w')
+    if pheno_db is not None:
+        try:
+            from rtd.preprocess_radtag_lane import get_table_as_dict
+        except:
+            from radtag_denovo.preprocess_radtag_lane import get_table_as_dict
+        phenotypes = {}
+        td = get_table_as_dict(pheno_db,suppress_fc_check=True)
 
-    idx = 0
-    for ind in indiv_to_write:
-        idx += 1
-        ofh.write('FAM%s\t%s\t0\t0\t1\t0' % (idx,ind))
-        for k in keys_to_write:
-            try:
-                gt = ' '.join([str(int(i)+1) for i in vcf_data[k]['indiv_gt'][ind]['GT'].split('/')])
-            except:
-                gt = '0 0'
-            ofh.write('\t' + gt)
-        ofh.write('\n')
+        for pheno in pheno_col:
+            phenotypes[pheno] = {}
+            for d in td:
+                ind = id_prefix+d[id_col]
+                try:
+                    phenotypes[pheno][ind] = d[pheno]
+                except:
+                    errstr = 'failed on column %s for id %s; missing value?' % (pheno,ind)
+                    raise ValueError, errstr
+    else:
+        phenotypes = {}
+        phenotypes['noPheno'] = dict([(ind,0) for ind in indiv_to_write])
 
-    ofh.close()
+
+    for pheno,pheno_by_ind in phenotypes.items():
+        ofh = open(outfile+'-%s.ped' % pheno,'w')
+
+        idx = 0
+        for ind in indiv_to_write:
+            idx += 1
+            ofh.write('FAM%s\t%s\t0\t0\t1\t%s' % (idx,ind,pheno_by_ind[ind])) #PHENO
+            for k in keys_to_write:
+                try:
+                    gt = ' '.join([str(int(i)+1) for i in vcf_data[k]['indiv_gt'][ind]['GT'].split('/')])
+                except:
+                    gt = '0 0'
+                ofh.write('\t' + gt)
+            ofh.write('\n')
+
+        ofh.close()
 
     mapout = os.path.splitext(outfile)[0] + '.map'
     ofh = open(mapout,'w')
