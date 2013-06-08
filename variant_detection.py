@@ -1519,13 +1519,21 @@ def smartpca_evec_to_plink_covar(ped,evec,outfile=None,ncols=None):
     if outfile is None:
         outfile = os.path.splitext(evec)[0]+'-%sevec_covar.txt' % ncols
 
+    ind_present = set([])
     ofh = open(outfile,'w')
     for l in ifh:
         fields = l.strip().split()
         ind = fields[0]
+        ind_present.add(ind)
         cols = fields[1:ncols+1]
         line = '%s\t%s\t%s\n' % (ped_lookup[ind],ind,'\t'.join(cols))
         ofh.write(line)
+
+    ind_missing = set(ped_lookup.keys()) - ind_present
+    for ind in ind_missing:
+        line = '%s\t%s\t%s\n' % (ped_lookup[ind],ind,'\t'.join(['0']*ncols))
+        ofh.write(line)
+        
     ofh.close()
 
 def likelihood_from_PLstr(pls):
