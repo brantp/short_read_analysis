@@ -1199,7 +1199,10 @@ def write_tassel_genotypes(vcf_data, outfile, keys_to_write = None, indiv_to_wri
 
     ofh.close()
     
-def write_plink_genotypes(vcf_data, outfile, keys_to_write = None, indiv_to_write = None, pheno_db = None, id_col = None, pheno_col = None, id_prefix = ''):
+def write_plink_genotypes(vcf_data, outbase, keys_to_write = None, indiv_to_write = None, pheno_db = None, id_col = None, pheno_col = None, id_prefix = '', missing_val='NA',plink_missing='-9'):
+
+    if not outbase.endswith('plink'):
+        outbase += '-plink'
 
     if keys_to_write is None:
         keys_to_write = vcf_data.keys()
@@ -1213,6 +1216,8 @@ def write_plink_genotypes(vcf_data, outfile, keys_to_write = None, indiv_to_writ
             indiv_to_write = indiv_to_write.union(set(v['indiv_gt'].keys()))
         indiv_to_write = sorted(list(indiv_to_write))
 
+    fam_d = dict([(ind,'FAM%s' % i) for i,ind in enumerate(indiv_to_write)])
+
     if pheno_db is not None:
         try:
             from rtd.preprocess_radtag_lane import get_table_as_dict
@@ -1221,40 +1226,40 @@ def write_plink_genotypes(vcf_data, outfile, keys_to_write = None, indiv_to_writ
         phenotypes = {}
         td = get_table_as_dict(pheno_db,suppress_fc_check=True)
 
-        for pheno in pheno_col:
-            phenotypes[pheno] = {}
-            for d in td:
-                ind = id_prefix+d[id_col]
-                try:
-                    phenotypes[pheno][ind] = d[pheno]
-                except:
-                    errstr = 'failed on column %s for id %s; missing value?' % (pheno,ind)
-                    raise ValueError, errstr
-    else:
-        phenotypes = {}
-        phenotypes['noPheno'] = dict([(ind,0) for ind in indiv_to_write])
+        for d in td:
+            ind = id_prefix+d[id_col]
+            if ind in indiv_to_write:
+                phenotypes[ind] = {}
+                for pheno in pheno_col:
+                    try:
+                        phenotypes[ind][pheno] = (d[pheno] == missing_val) and plink_missing or d[pheno]
+                    except:
+                        errstr = 'failed on column %s for id %s; missing value?' % (pheno,ind)
+                        raise ValueError, errstr
 
-
-    for pheno,pheno_by_ind in phenotypes.items():
-        ofh = open(outfile+'-%s.ped' % pheno,'w')
-
-        idx = 0
-        for ind in indiv_to_write:
-            idx += 1
-            ofh.write('FAM%s\t%s\t0\t0\t1\t%s' % (idx,ind,pheno_by_ind[ind])) #PHENO
-            for k in keys_to_write:
-                try:
-                    gt = ' '.join([str(int(i)+1) for i in vcf_data[k]['indiv_gt'][ind]['GT'].split('/')])
-                except:
-                    gt = '0 0'
-                ofh.write('\t' + gt)
-            ofh.write('\n')
-
+        ofh = open(outbase+'-pheno-%s.txt' % '_'.join(pheno_col),'w')
+        for ind, ind_pheno in phenotypes.items():
+            line = '%s\t%s\t%s\n' % (fam_d[ind],ind,'\t'.join([ind_pheno[pheno] for pheno in pheno_col]))
+            ofh.write(line)
         ofh.close()
+        
+    ofh = open(outbase+'.ped','w')
 
-    mapout = os.path.splitext(outfile)[0] + '.map'
+    for ind in indiv_to_write:
+        ofh.write('%s\t%s\t0\t0\t1\t0' % (fam_d[ind],ind))
+        for k in keys_to_write:
+            try:
+                gt = ' '.join([str(int(i)+1) for i in vcf_data[k]['indiv_gt'][ind]['GT'].split('/')])
+            except:
+                gt = '0 0'
+            ofh.write('\t' + gt)
+        ofh.write('\n')
+
+    ofh.close()
+
+    mapout = outbase + '.map'
     ofh = open(mapout,'w')
-    infout = open(outfile + '.info','w')
+    infout = open(outbase + '.info','w')
     
     chrom_translation = dict([(k,i+1) for i,k in enumerate(set([k[0] for k in keys_to_write]))])
     open(mapout+'.xlat','w').write('\n'.join(['%s\t%s' % (k,v) for k, v in chrom_translation.items()]))
@@ -1481,6 +1486,10 @@ def write_fastPHASE_genotypes(vcf_data,outbase, keys_to_write = None, indiv_to_w
 
 from short_read_analysis import extract_genotypes_from_mclgr
 def write_smartpca_genotypes(vcf_data,outbase):
+
+    if not outbase.endswith('smartpca'):
+        outbase += '-smartpca'
+    
     pm,gt = extract_genotypes_from_mclgr.genotypes_from_vcf_obj(vcf_data,0)
     extract_genotypes_from_mclgr.output_genotype_file(pm,gt,outbase+'.snp',outbase+'.ancestrymapgeno')
     open(outbase+'.ind','w').write('\n'.join(['%s\tU\t1' % ind for ind in gt.keys()]))
@@ -1490,6 +1499,34 @@ def write_smartpca_genotypes(vcf_data,outbase):
                                    'evecoutname:\t%s.evec\n' \
                                    'evaloutname:\t%s.eval\n' \
                                    'snpweightoutname:\t%s.snpweightout\n' % tuple([outbase]*6))
+
+def smartpca_evec_to_plink_covar(ped,evec,outfile=None,ncols=None):
+
+    ped_lookup = {}
+    for l in open(ped):
+        fam,ind = l.strip().split()[:2]
+        ped_lookup[ind] = fam
+        
+    ifh = open(evec)
+    header_line = ifh.readline()
+    cols_present = len(header_line.strip().split()) - 1
+    if ncols is None:
+        ncols = cols_present
+
+    if ncols > cols_present:
+        print >> sys.stderr, '%s columns requested exceeds %s columns in %s' % (ncols,cols_present,evec)
+        raise ValueError
+    if outfile is None:
+        outfile = os.path.splitext(evec)[0]+'-%sevec_covar.txt' % ncols
+
+    ofh = open(outfile,'w')
+    for l in ifh:
+        fields = l.strip().split()
+        ind = fields[0]
+        cols = fields[1:ncols+1]
+        line = '%s\t%s\t%s\n' % (ped_lookup[ind],ind,'\t'.join(cols))
+        ofh.write(line)
+    ofh.close()
 
 def likelihood_from_PLstr(pls):
     '''pls is assumed to be a comma-separated string

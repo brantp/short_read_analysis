@@ -53,3 +53,8 @@ def write_wigs_all_simple(vcf_obj,db_name,enc,outbase):
     write_wigs_pheno(phenos,outbase+'-wigs-pheno.txt')
 
     write_wigs_genotypes(vcf_obj,indiv_lists,outbase,[0,0],[0,1],'RB')
+
+def cut_fn(sd): #NOTE QD 5 DIFFERS FROM SINERGIA/CRL
+    summ_stats = ['FS','QUAL','BaseQRankSum','QD','SB','ReadPosRankSum']
+    FS,QUAL,BaseQRankSum,QD,SB,ReadPosRankSum = map(float,[sd.get(ss,0) for ss in summ_stats])
+    return FS < 72 and QUAL > 218 and BaseQRankSum < 5 and QD >= 5 and SB < 10 and ReadPosRankSum > -9 and sd['fh'] < 0.55
