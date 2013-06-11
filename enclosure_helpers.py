@@ -45,14 +45,14 @@ def write_wigs_pheno(phenos,outfile):
 
 from variant_detection import write_wigs_genotypes
 
-def write_wigs_all_simple(vcf_obj,db_name,enc,outbase):
-    indiv_lists = indiv_lists_by_enc(vcf_obj,db_name,enc)
+def write_wigs_all_simple(vcf_obj,db_name,enc,site,outbase):
+    indiv_lists = indiv_lists_by_enc(vcf_obj,db_name,enc,sites=[site])
     phenos = wigs_phenotypes_from_DB(db_name,indiv_lists)
 
     open(outbase+'-wigs-indivs.tuple','w').write(indiv_lists.__repr__())
     write_wigs_pheno(phenos,outbase+'-wigs-pheno.txt')
 
-    write_wigs_genotypes(vcf_obj,indiv_lists,outbase,[0,0],[0,1],'RB')
+    write_wigs_genotypes(vcf_obj,indiv_lists,outbase,[0],[0],'RB')
 
 def cut_fn(sd): #NOTE QD 5 DIFFERS FROM SINERGIA/CRL
     summ_stats = ['FS','QUAL','BaseQRankSum','QD','SB','ReadPosRankSum']
