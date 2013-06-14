@@ -837,9 +837,9 @@ if __name__ == '__main__':
             raise OSError, 'failed to merge bams'
         rg_ref_bams_old = rg_ref_bams
         rg_ref_bams = [mergebam]
-    if not os.path.exists(mergebam+'.done'):
-        print >> sys.stderr, 'merge invoked, donefile %s not found' % mergebam+'.done'
-        raise OSError
+        if not os.path.exists(mergebam+'.done'):
+            print >> sys.stderr, 'merge invoked, donefile %s not found' % mergebam+'.done'
+            raise OSError
 
     #PERFORM REALIGNMENT IF SELECTED
     if opts.realign:
