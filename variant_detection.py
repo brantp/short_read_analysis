@@ -1545,6 +1545,13 @@ def likelihood_from_PLstr(pls):
 def vcf_sort(k):
     return (k[0],int(k[1]))
 
+def vcf_by_chrom(vcf_data):
+    bychrom = defaultdict(dict)
+    for (c,s),sd in vcf_data.items():
+        bychrom[c][s] = sd
+
+    return bychrom
+
 def write_wigs_genotypes(vcf_data,indiv_lists,outbase,blocks,treatments,prefix=''):
     '''prefix is for individual ids (hack for "RB" in enclosures)
     '''

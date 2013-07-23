@@ -6,9 +6,9 @@ import os,sys,LSF,run_safe
 
 geno,pheno,runs = sys.argv[1:]
 
-basedir = os.path.dirname(pheno)
-donedir = os.path.join(basedir,'donedir/')
-logfile = = os.path.join(basedir,'logs/log-')
+basedir,basename = os.path.split(pheno)
+donedir = os.path.join(basedir,os.path.splitext(basename)[0]+'-permute-donedir/')
+logfile = os.path.join(basedir,os.path.splitext(basename)[0]+'-permute-logs/log-')
 
 if not os.path.exists(donedir): os.makedirs(donedir)
 
