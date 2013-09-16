@@ -13,7 +13,18 @@ all files except .vcf will be created in the same directory as the fastq data fi
 
 
 '''
-import os, sys, re, LSF, numpy
+
+try:
+    import LSF
+except:
+    print >> sys.stderr, 'LSF unavailable'
+try:
+    import SLURM
+except:
+    print >> sys.stderr, 'SLURM unavailable'
+        
+
+import os, sys, re, numpy
 from glob import glob
 from subprocess import Popen, PIPE
 from collections import defaultdict
@@ -39,6 +50,24 @@ MAX_RETRY = 3
 MERGE_BAMS_ABOVE = 50
 
 skip_contigs = [] #['ruf_bac_7180000001736']
+
+def schedule_jobs(to_run_dict,scheduler,jobname_base,logbase,queue,requeue=None,njobs=None,duration=1440,mem=2048,flags='',MAX_RETRY=MAX_RETRY):
+    if njobs is None:
+        njobs = len(trd)
+        
+    if scheduler == 'lsf':
+        LSF.lsf_run_until_done(to_run_dict,logbase,queue,flags,jobname_base,njobs,MAX_RETRY)
+        if requeue:
+            LSF.lsf_run_until_done(to_run_dict,logbase,requeue,flags,jobname_base,njobs,MAX_RETRY)
+    elif scheduler == 'slurm':
+        #make right before copying
+        SLURM.run_until_done(to_run_dict,jobname_base,logbase,duration,mem,njobs,queue,MAX_RETRY=MAX_RETRY)
+        if requeue:
+            SLURM.run_until_done(to_run_dict,jobname_base,logbase,duration,mem,njobs,requeue,MAX_RETRY=MAX_RETRY)
+    else:
+        errstr = 'scheduler must be one of ["lsf","slurm"]; is %s' % opts.scheduler
+        raise ValueError, errstr
+                                                                                    
 
 def unfinished_cmds(to_run_dict,finished_ext='.done'):
     cmds = []
@@ -171,19 +200,13 @@ def realign_bams_lsf(bams,ref,outroot,njobs,min_ind_realign,queue='normal_serial
             cmd = 'java -Xmx%sg -jar %s -T RealignerTargetCreator -I %s -R %s -L %s %s -o %s' % (gatk_ram,gatk_jar,bamstr,ref,reg_str,targetcreator_opts,intervals_parts_file)
             to_run_dict[intervals_parts_file] = run_safe.safe_script(cmd,intervals_parts_file)
 
+        #SLURM HERE
         logfile = os.path.join(intervals_parts_root,'logs','RealignerTargetCreator')
-
-        #replace with run_until_done
-        LSF.lsf_run_until_done(to_run_dict,logfile,queue,'-R "select[mem>%s]"' % job_ram, 'targetcreator',njobs,MAX_RETRY)
-        if fallback_queue:
-            LSF.lsf_run_until_done(to_run_dict,logfile,fallback_queue,'-R "select[mem>%s]"' % job_ram, 'targetcreator',njobs,MAX_RETRY)
+        schedule_jobs(to_run_dict,opts.scheduler,'targetcreator',logfile,queue,requeue=fallback_queue,njobs=njobs,duration=2880,mem=(gatk_ram*1024)+512,flags='-R "select[mem>%s]"' % job_ram,MAX_RETRY=MAX_RETRY)
+        #LSF.lsf_run_until_done(to_run_dict,logfile,queue,'-R "select[mem>%s]"' % job_ram, 'targetcreator',njobs,MAX_RETRY)
+        #if fallback_queue:
+        #    LSF.lsf_run_until_done(to_run_dict,logfile,fallback_queue,'-R "select[mem>%s]"' % job_ram, 'targetcreator',njobs,MAX_RETRY)
         
-        #cmds = unfinished_cmds(to_run_dict)
-        #while cmds:
-        #    jobids,namedict = LSF.lsf_jobs_submit(cmds,logfile,queue,'-R "select[mem>%s]"' % job_ram, jobname_base='targetcreator')
-        #    LSF.lsf_wait_for_jobs(jobids,logfile,queue,namedict=namedict)
-        #    cmds = unfinished_cmds(to_run_dict)
-
         catcmd = 'cat %s > %s' % (' '.join(to_run_dict.keys()),intervals_file)
         ret = os.system(run_safe.safe_script(catcmd,intervals_file))
         if ret != 0:
@@ -220,15 +243,12 @@ def realign_bams_lsf(bams,ref,outroot,njobs,min_ind_realign,queue='normal_serial
             cmd = 'cd %s; java -Xmx%sg -jar %s -T IndelRealigner -model USE_SW -I %s -R %s --targetIntervals %s -nWayOut .realigned.bam' % (workdir,gatk_ram,gatk_jar,bamstr,ref,intervals_file)
             to_run_dict[donefile] = run_safe.safe_script(cmd,donefile)
 
+        #SLURM here
         logfile = os.path.join(realign_root,'logs','IndelRealigner')
-        LSF.lsf_run_until_done(to_run_dict,logfile,queue,'-R "select[mem>%s]"' % job_ram, 'realigner',njobs,MAX_RETRY)
-        if fallback_queue:
-            LSF.lsf_run_until_done(to_run_dict,logfile,fallback_queue,'-R "select[mem>%s]"' % job_ram, 'realigner',njobs,MAX_RETRY)
-        #cmds = unfinished_cmds(to_run_dict)
-        #while cmds:
-        #    jobids,namedict = LSF.lsf_jobs_submit(cmds,logfile,queue,'-R "select[mem>%s]"' % job_ram, jobname_base='realigner')
-        #    LSF.lsf_wait_for_jobs(jobids,logfile,queue,namedict=namedict)
-        #    cmds = unfinished_cmds(to_run_dict)
+        schedule_jobs(to_run_dict,opts.scheduler,'realigner',logfile,queue,requeue=fallback_queue,njobs=njobs,duration=2880,mem=(gatk_ram*1024)+512,flags='-R "select[mem>%s]"' % job_ram,MAX_RETRY=MAX_RETRY)
+        #LSF.lsf_run_until_done(to_run_dict,logfile,queue,'-R "select[mem>%s]"' % job_ram, 'realigner',njobs,MAX_RETRY)
+        #if fallback_queue:
+        #    LSF.lsf_run_until_done(to_run_dict,logfile,fallback_queue,'-R "select[mem>%s]"' % job_ram, 'realigner',njobs,MAX_RETRY)
 
     for realigned,realignedlink in realign_to_srcroot.items():
         if not os.path.exists(realignedlink):
@@ -282,18 +302,13 @@ def call_variants_gatk_lsf(bams,ref,outroot,vcfbase,njobs=100,gatk_program='Unif
         #os.system('chmod +x %s' % part_sh)
         to_run_dict[partvcf] = run_safe.safe_script(cmd,partvcf,force_write=True)
 
+    #SLURM here
     logfile = os.path.join(vcf_parts_root,'logs',gatk_program)
-    LSF.lsf_run_until_done(to_run_dict,logfile,queue,'-R "select[mem>%s]"' % job_ram, 'gatk',njobs,MAX_RETRY)
-    if fallback_queue:
-        LSF.lsf_run_until_done(to_run_dict,logfile,fallback_queue,'-R "select[mem>%s]"' % job_ram, 'gatk',njobs,MAX_RETRY)
-    #cmds = unfinished_cmds(to_run_dict)
-    #while cmds:
-    #    jobids,namedict = LSF.lsf_jobs_submit(cmds,logfile,'normal_serial','-R "select[mem>30000]"', jobname_base='gatk')
-    #    LSF.lsf_wait_for_jobs(jobids,logfile,'normal_serial',namedict=namedict)
-    #    cmds = unfinished_cmds(to_run_dict)
+    schedule_jobs(to_run_dict,opts.scheduler,'gatk',logfile,queue,requeue=fallback_queue,njobs=njobs,duration=2880,mem=(gatk_ram*1024)+512,flags='-R "select[mem>%s]"' % job_ram,MAX_RETRY=MAX_RETRY)
+    #LSF.lsf_run_until_done(to_run_dict,logfile,queue,'-R "select[mem>%s]"' % job_ram, 'gatk',njobs,MAX_RETRY)
+    #if fallback_queue:
+    #    LSF.lsf_run_until_done(to_run_dict,logfile,fallback_queue,'-R "select[mem>%s]"' % job_ram, 'gatk',njobs,MAX_RETRY)
 
-    #varstr = ' -V '.join(sorted(to_run_dict.keys()))
-    #cmd = 'java -Xmx%sg -jar %s -T CombineVariants --assumeIdenticalSamples -R %s -V %s -o %s' % (gatk_ram,gatk_jar,ref,varstr,gatkoutvcf)
     cmd = merge_vcf_parts_cmd(to_run_dict.keys(),ref,gatkoutvcf,gatk_jar,gatk_ram,tmpdir)
     ret = os.system(run_safe.safe_script(cmd,gatkoutvcf))
     if ret != 0:
@@ -306,7 +321,7 @@ def merge_vcf_parts_cmd(vcfparts,ref,outvcf,gatk_jar,gatk_ram,tmpdir,rod_type = 
     cmd = 'merge_vcf_parts.py -r %s -v %s -o %s' % (ref,varstr,outvcf)
     return cmd
 
-def call_variants_mpileup_lsf(bams,ref,outroot,vcfbase,njobs=100,mpileup_args='',gatk_jar=gatk_jar,gatk_ram=8,tmpdir=None,queue='normal_serial',job_ram='30000',MAX_RETRY=MAX_RETRY,include_regions=None):
+def call_variants_mpileup_lsf(bams,ref,outroot,vcfbase,njobs=100,mpileup_args='',gatk_jar=gatk_jar,gatk_ram=8,tmpdir=None,queue='normal_serial',job_ram='30000',MAX_RETRY=MAX_RETRY,include_regions=None,fallback_queue=''):
     if tmpdir is None:
         tmpdir = os.path.join(outroot,'gatk_tmp')
 
@@ -348,23 +363,15 @@ def call_variants_mpileup_lsf(bams,ref,outroot,vcfbase,njobs=100,mpileup_args=''
         #vcfparts = this_trd.keys() ### <---MAKE THIS WORK (merge in parts before merge all)
         #merge_subparts_trd[partvcf] = run_safe.safe_script(merge_vcf_parts_cmd(vcfparts,ref,partvcf,gatk_jar,gatk_ram,tmpdir,rod_type = ':VCF'),partvcf)
 
+    #SLURM here
     logfile = os.path.join(vcf_parts_root,'logs','mpileup-parts')
-    LSF.lsf_run_until_done(to_run_dict,logfile,queue,'-R "select[mem>%s]"' % job_ram, 'mpileup',njobs,MAX_RETRY)
-
-    #logfile = os.path.join(vcf_parts_root,'logs','mpileup-parts-merge')
-    #LSF.lsf_run_until_done(merge_subparts_trd,logfile,queue,'-R "select[mem>%s]"' % job_ram, 'mpileup-partsmerge',njobs,MAX_RETRY)
-    
-    #cmds = unfinished_cmds(to_run_dict)
-    #while cmds:
-    #    jobids,namedict = LSF.lsf_jobs_submit(cmds,logfile,'normal_serial','-R "select[mem>30000]"', jobname_base='gatk')
-    #    LSF.lsf_wait_for_jobs(jobids,logfile,'normal_serial',namedict=namedict)
-    #    cmds = unfinished_cmds(to_run_dict)
+    schedule_jobs(to_run_dict,opts.scheduler,'mpileup',logfile,queue,requeue=fallback_queue,njobs=njobs,duration=2880,mem=(gatk_ram*1024)+512,flags='-R "select[mem>%s]"' % job_ram,MAX_RETRY=MAX_RETRY)
+    #LSF.lsf_run_until_done(to_run_dict,logfile,queue,'-R "select[mem>%s]"' % job_ram, 'mpileup',njobs,MAX_RETRY)
 
     cmd = run_safe.safe_script(merge_vcf_parts_cmd(subparts,ref,mpoutvcf,gatk_jar,gatk_ram,tmpdir),mpoutvcf)
     ret = os.system(cmd)
     if ret != 0:
         raise OSError, 'VCF merge failed:\n%s' % cmd
-
 
 
 def fqname_from_sample_dict(d,read_subpath='reads_by_individual',readnum=1,read_ext='txt.gz'):
@@ -514,8 +521,9 @@ if __name__ == '__main__':
 
     parser.add_argument('-r','--reads_per_part',default=100000,type=int,help='target number of reads for each stampy process, used to calculate stampy --processpart.'+ds)
     parser.add_argument('-n','--num_batches',default=100,type=int,help='number of LSF batches to submit.'+ds)
-    parser.add_argument('-q','--lsf_queue',default='normal_serial',type=str,help='LSF submission queue.'+ds)
-    parser.add_argument('-fbq','--fallback_queue',default='',type=str,help='fallback LSF submission queue; invoked after MAX_RETRY failed LSF reruns on --lsf_queue.'+ds)
+    parser.add_argument('-q','--lsf_queue',default='normal_serial',type=str,help='LSF submission queue. (Treated as slurm partition if --scheduler=SLURM)'+ds)
+    parser.add_argument('-fbq','--fallback_queue',default='',type=str,help='fallback LSF/slurm submission queue; invoked after MAX_RETRY failed LSF reruns on --lsf_queue.'+ds)
+    parser.add_argument('-sched','--scheduler',default='lsf',type=str,help='Scheduler to submit jobs to.  Current support for "lsf" and "slurm"'+ds)
 
     parser.add_argument('-tr','--target_regions',default=None,help='file of sequences (one seq ID per line) to genotype across.'+ds)
 
@@ -721,35 +729,9 @@ if __name__ == '__main__':
     if opts.debug:
         print 'COMMANDS FOLLOW:\n'+'\n'.join(cmds)
     else:
-        logfile = os.path.join(outroot,'lsflog','stampy-%s-%s-log' % (bp,tb))
-        LSF.lsf_run_until_done(cmd_by_sam,logfile,'normal_serial','-R "select[mem>20000]"', 'stampy',njobs,MAX_RETRY)
-        #if len(cmds) > 0:
-        #    
-        #    logfile = os.path.join(outroot,'lsflog','stampy-%s-%s-log' % (bp,tb))
-        #    
-        #    jobids,namedict = LSF.lsf_jobs_submit(cmds,logfile,'normal_serial',jobname_base='stampy',num_batches=njobs)
-        #    time.sleep(20)
-        #    LSF.lsf_wait_for_jobs(jobids,logfile,namedict=namedict)
-        #
-        #    cmds = unfinished_cmds(cmd_by_sam)
-        #
-        #    retries = 0
-        #    last_cmds = []
-        #    while len(cmds) > 0:
-        #        #code to halt execution on recurrent errors
-        #        if set(last_cmds) == set(cmds):
-        #            if retries > MAX_RETRY:
-        #                raise IOError, 'maximum number of retry attempts (%s) exceeded with identical jobs lists.  Check stampy logs for recurrent errors' % MAX_RETRY
-        #            else:
-        #                retries += 1
-        #        last_cmds = cmds
-        #        
-        #        jobids,namedict = LSF.lsf_jobs_submit(cmds,logfile,'normal_serial',jobname_base='stampy',num_batches=njobs)
-        #        time.sleep(20)
-        #        LSF.lsf_wait_for_jobs(jobids,logfile,namedict=namedict)
-        #
-        #        cmds = unfinished_cmds(cmd_by_sam)
-
+        #SLURM example
+        logfile = os.path.join(outroot,'%slog' % opts.scheduler,'stampy-%s-%s-log' % (bp,tb))
+        schedule_jobs(cmd_by_sam,opts.scheduler,'stampy',logfile,opts.lsf_queue,requeue=opts.fallback_queue,njobs=njobs,duration=2880,mem=(opts.gatk_ram*1024)+512,flags='-R "select[mem>20000]"',MAX_RETRY=MAX_RETRY)
 
     #MERGE SAM PARTS FROM STAMPY
     cmds = []
@@ -762,23 +744,10 @@ if __name__ == '__main__':
     if opts.debug:
         print 'COMMANDS FOLLOW:\n'+'\n'.join(cmds)
     else:
-        logfile = os.path.join(outroot,'lsflog','merge-%s-%s-log' % (bp,tb))
-        LSF.lsf_run_until_done(mergecmds_by_bam,logfile,opts.lsf_queue,'-R "select[mem>20000]"','stampy-merge',njobs,MAX_RETRY)
-        #if len(cmds) > 0:
-        #    import time
-        #    logfile = os.path.join(outroot,'lsflog','merge-%s-%s-log' % (bp,tb))
-        #    jobids,namedict = LSF.lsf_jobs_submit(cmds,logfile,'normal_serial',jobname_base='stampy-merge',num_batches=njobs)
-        #    time.sleep(20)
-        #    LSF.lsf_wait_for_jobs(jobids,logfile,namedict=namedict)
-        #
-        #    cmds = unfinished_cmds(mergecmd_by_bam)
-        #    while len(cmds) > 0:
-        #        jobids,namedict = LSF.lsf_jobs_submit(cmds,logfile,'normal_serial',jobname_base='stampy-merge')
-        #        time.sleep(20)
-        #        LSF.lsf_wait_for_jobs(jobids,logfile,namedict=namedict)
-        #        cmds = unfinished_cmds(mergecmd_by_bam)
-        #
-        #    cmds = []
+        #SLURM here
+        logfile = os.path.join(outroot,'%slog' % opts.scheduler,'merge-%s-%s-log' % (bp,tb))
+        schedule_jobs(mergecmds_by_bam,opts.scheduler,'stampy-merge',logfile,opts.lsf_queue,requeue=opts.fallback_queue,njobs=njobs,duration=2880,mem=(opts.gatk_ram*1024)+512,flags='-R "select[mem>20000]"',MAX_RETRY=MAX_RETRY)
+        #LSF.lsf_run_until_done(mergecmds_by_bam,logfile,opts.lsf_queue,'-R "select[mem>20000]"','stampy-merge',njobs,MAX_RETRY)
 
     if opts.cleanup:
         print >> sys.stderr, 'remove %s .sam part files' % len(cmd_by_sam)
@@ -804,8 +773,11 @@ if __name__ == '__main__':
             rr_cmd = 'realign_reduce_bam.py %s %s' % (bam,reference_fasta)
             run_safe.add_cmd(to_run_dict,rr_done,rr_cmd,force_write=True)
             rr_rg_ref_bams.append(rr_bam)
-        logfile = os.path.join(outroot,'lsflog','realign-reduce-log')
-        LSF.lsf_run_until_done(to_run_dict,logfile,opts.lsf_queue,'-R "select[mem>20000]"','realign-reduce',njobs,MAX_RETRY)
+
+        #SLURM here
+        logfile = os.path.join(outroot,'%slog' % opts.scheduler,'realign-reduce-log')
+        schedule_jobs(to_run_dict,opts.scheduler,'realign-reduce',logfile,opts.lsf_queue,requeue=opts.fallback_queue,njobs=njobs,duration=2880,mem=(opts.gatk_ram*1024)+512,flags='-R "select[mem>20000]"',MAX_RETRY=MAX_RETRY)
+        #LSF.lsf_run_until_done(to_run_dict,logfile,opts.lsf_queue,'-R "select[mem>20000]"','realign-reduce',njobs,MAX_RETRY)
         #switch rg_ref_bams to reduced
         orig_rg_ref_bams = rg_ref_bams
         rg_ref_bams = rr_rg_ref_bams
