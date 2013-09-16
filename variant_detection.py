@@ -1524,6 +1524,8 @@ def smartpca_evec_to_plink_covar(ped,evec,outfile=None,ncols=None):
     for l in ifh:
         fields = l.strip().split()
         ind = fields[0]
+        if not ind in ped_lookup:
+            continue
         ind_present.add(ind)
         cols = fields[1:ncols+1]
         line = '%s\t%s\t%s\n' % (ped_lookup[ind],ind,'\t'.join(cols))

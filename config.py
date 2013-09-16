@@ -1,1 +1,0 @@
-/n/home08/brantp/code/radtag_denovo/config.py

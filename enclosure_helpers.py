@@ -198,3 +198,31 @@ def compile_credible_sites_from_wigs_outputs(wigsouts,new_geno_base):
     outfh.close()
     geno = new_geno_base+'-credible-wigs-geno.txt'
     os.system('cat %s %s > %s' % (geno_head,geno_body,geno))
+
+def add_pop_to_smartpca(smartpca_inbase,smartpca_outbase,db_name='FULL',prefix='RB'):
+    td = get_table_as_dict(db_name,suppress_fc_check=True)
+    pop_lookup = dict([(prefix+d['id'],d['location']) for d in td])
+    infile = smartpca_inbase+'.ind'
+    outfile = smartpca_outbase+'.ind'
+    outfh = open(outfile,'w')
+    for l in open(infile):
+        ind = l.strip().split()[0]
+        newl = '\t'.join(l.split()[:2]+[pop_lookup[ind]+'\n'])
+        outfh.write(newl)
+    outfh.close()
+
+    open(smartpca_outbase+'.par','w').write('genotypename:\t%s.ancestrymapgeno\n' \
+                                   'snpname:\t%s.snp\n' \
+                                   'indivname:\t%s.ind\n' \
+                                   'evecoutname:\t%s.evec\n' \
+                                   'evaloutname:\t%s.eval\n' \
+                                   'snpweightoutname:\t%s.snpweightout\n'
+                                   'phylipoutname:\t%s.fst\n' % tuple([smartpca_outbase]*7))
+        
+    ret = os.system('cp %s %s' % (smartpca_inbase+'.ancestrymapgeno',smartpca_outbase+'.ancestrymapgeno'))
+    if ret != 0:
+        raise OSError
+    ret = os.system('cp %s %s' % (smartpca_inbase+'.snp',smartpca_outbase+'.snp'))
+    if ret != 0:
+        raise OSError
+    
