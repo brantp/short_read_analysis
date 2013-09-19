@@ -44,7 +44,8 @@ picard_jar_root = '/n/home08/brantp/src/picard_svn_20130220/trunk/dist'
 picard_jar = os.path.join(picard_jar_root,'MergeSamFiles.jar')
 picard_seqdict_jar = os.path.join(picard_jar_root,'CreateSequenceDictionary.jar')
 #stampy_module = 'bio/stampy-1.0.18'
-stampy_module = 'bio/stampy-1.0.21_python2.7.3'
+#stampy set below; now uses opts.scheduler to discriminate centos5/centos6
+
 min_ind_realign = 12
 MAX_RETRY = 3
 MERGE_BAMS_ABOVE = 50
@@ -550,6 +551,13 @@ if __name__ == '__main__':
     parser.add_argument('reads',nargs='+',help='fastq for stampy (qualities should be fastq-33)')
     
     opts = parser.parse_args()
+
+    if opts.scheduler == 'lsf':
+        stampy_module = 'bio/stampy-1.0.21_python2.7.3'
+    elif opts.scheduler == 'slurm':
+        stampy_module = 'centos6/stampy-1.0.18_python2.7.3'
+    else:
+        raise ValueError, 'scheduler must be "lsf" or "slurm"'
 
     if opts.reduce_reads:
         opts.realign = False
