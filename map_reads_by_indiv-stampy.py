@@ -842,7 +842,11 @@ if __name__ == '__main__':
 
     # MERGE BAMS IF MORE THAN 100 HERE?
     if opts.force_bam_merge or (vcfname is not None and len(rg_ref_bams) > MERGE_BAMS_ABOVE and not opts.no_merge):
-        mergebam = os.path.join(outroot,vcfname+'-all_bam-merged.bam')
+        if vcfname is None:
+            bamname = 'samples'
+        else:
+            bamname = vcfname
+        mergebam = os.path.join(outroot,bamname+'-all_bam-merged.bam')
         if opts.fast_merge:
             cmd = 'merge_sams_no_validation.py %s %s' % (mergebam,' '.join(rg_ref_bams))
         else:
