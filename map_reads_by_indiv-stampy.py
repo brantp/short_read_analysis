@@ -531,6 +531,7 @@ if __name__ == '__main__':
     parser.add_argument('-tr','--target_regions',default=None,help='file of sequences (one seq ID per line) to genotype across.'+ds)
 
     parser.add_argument('--no_merge',action='store_true',help='do not perform bam merge after mapping (regardless of number of individual bams)'+ds)
+    parser.add_argument('--force_bam_merge',action='store_true',help='ALWAYS perform bam merge after mapping (regardless of number of individual bams)'+ds)
     parser.add_argument('--fast_merge',action='store_true',help='skip validation in bam merge'+ds)
     
     parser.add_argument('-up','--unpair_reads',action='store_true',help='will NOT attempt to pair read1 and read2 files in input reads'+ds)
@@ -840,7 +841,7 @@ if __name__ == '__main__':
         sys.exit(0)
 
     # MERGE BAMS IF MORE THAN 100 HERE?
-    if vcfname is not None and len(rg_ref_bams) > MERGE_BAMS_ABOVE and not opts.no_merge:
+    if opts.force_bam_merge or (vcfname is not None and len(rg_ref_bams) > MERGE_BAMS_ABOVE and not opts.no_merge):
         mergebam = os.path.join(outroot,vcfname+'-all_bam-merged.bam')
         if opts.fast_merge:
             cmd = 'merge_sams_no_validation.py %s %s' % (mergebam,' '.join(rg_ref_bams))
