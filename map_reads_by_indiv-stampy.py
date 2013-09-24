@@ -836,9 +836,9 @@ if __name__ == '__main__':
         print >> sys.stderr, 'the following inputs are missing:\n\t%s' % ('\n\t'.join(missing_bams))
         raise ValueError, 'missing bams for merge'
 
-    if vcfname is None:
-        print >> sys.stderr, 'alignment complete; subsequent steps only invoked if -v / --vcfname set'
-        sys.exit(0)
+    #if vcfname is None:
+    #    print >> sys.stderr, 'alignment complete; subsequent steps only invoked if -v / --vcfname set'
+    #    sys.exit(0)
 
     # MERGE BAMS IF MORE THAN 100 HERE?
     if opts.force_bam_merge or (vcfname is not None and len(rg_ref_bams) > MERGE_BAMS_ABOVE and not opts.no_merge):
