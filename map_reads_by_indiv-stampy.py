@@ -334,7 +334,7 @@ def call_variants_gatk_lsf(bams,ref,outroot,vcfbase,njobs=100,gatk_program='Unif
         mt_ram = int(mt_ram)
         print >> sys.stderr, '\nrun multithreaded %s: %s jobs; ram-per-core: %s cores: %s' % (gatk_program,len(par_to_run_dict),mt_ram,mt_cores)
         schedule_jobs(par_to_run_dict,scheduler,gatk_program,logfile,queue,requeue=fallback_queue,njobs=njobs,duration=2880,mem=mt_ram,flags='-R "select[mem>%s]"' % job_ram,MAX_RETRY=MAX_RETRY,slurm_cores=mt_cores)
-        trd_keys.extend(par_to_run_dict.keys()
+        trd_keys.extend(par_to_run_dict.keys())
     
     #LSF.lsf_run_until_done(to_run_dict,logfile,queue,'-R "select[mem>%s]"' % job_ram, 'gatk',njobs,MAX_RETRY)
     #if fallback_queue:
