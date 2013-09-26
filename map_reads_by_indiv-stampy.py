@@ -13,6 +13,7 @@ all files except .vcf will be created in the same directory as the fastq data fi
 
 
 '''
+import os, sys, re, numpy
 
 try:
     import LSF
@@ -22,9 +23,7 @@ try:
     import SLURM
 except:
     print >> sys.stderr, 'SLURM unavailable'
-        
 
-import os, sys, re, numpy
 from glob import glob
 from subprocess import Popen, PIPE
 from collections import defaultdict
@@ -37,7 +36,8 @@ picardRAM = 4
 #gatk_jar = '/n/home08/brantp/src/GATK-git/dist/GenomeAnalysisTK.jar'
 #gatk2_jar = '/n/home08/brantp/src/GenomeAnalysisTK-2.1-8-g5efb575/GenomeAnalysisTK.jar'
 #gatk2_jar = '/n/home08/brantp/src/GenomeAnalysisTK-2.2-16-g9f648cb/GenomeAnalysisTK.jar'
-gatk2_jar = '/n/home08/brantp/src/GenomeAnalysisTK-2.4-3-g2a7af43/GenomeAnalysisTK.jar'
+#gatk2_jar = '/n/home08/brantp/src/GenomeAnalysisTK-2.4-3-g2a7af43/GenomeAnalysisTK.jar'
+gatk2_jar = '/n/home08/brantp/src/GenomeAnalysisTK-2.7-2-g6bda569/GenomeAnalysisTK.jar'
 gatk_jar = gatk2_jar
 #picard_jar_root = '/n/home08/brantp/src/picard_svn/trunk/dist'
 picard_jar_root = '/n/home08/brantp/src/picard_svn_20130220/trunk/dist'
@@ -51,9 +51,13 @@ MAX_RETRY = 3
 MERGE_BAMS_ABOVE = 50
 JOB_MEM_OVERHEAD = 1024 #RAM in MB to request above --gatk_ram value for slurm jobs
 
+#temporarily hardcoded genotyper parallelization for "hard" jobs (jobs run more than MAX_RETRY in genotyping) [GATK ONLY]
+GATK_PAR_NT = 8
+GATK_PAR_NCT = 8
+
 skip_contigs = [] #['ruf_bac_7180000001736']
 
-def schedule_jobs(to_run_dict,scheduler,jobname_base,logbase,queue,requeue=None,njobs=None,duration=1440,mem=2048,flags='',MAX_RETRY=MAX_RETRY):
+def schedule_jobs(to_run_dict,scheduler,jobname_base,logbase,queue,requeue=None,njobs=None,duration=1440,mem=2048,flags='',MAX_RETRY=MAX_RETRY,slurm_cores=1):
     if njobs is None:
         njobs = len(trd)
         
@@ -62,10 +66,13 @@ def schedule_jobs(to_run_dict,scheduler,jobname_base,logbase,queue,requeue=None,
         if requeue:
             LSF.lsf_run_until_done(to_run_dict,logbase,requeue,flags,jobname_base,njobs,MAX_RETRY)
     elif scheduler == 'slurm':
+        kwargs = {}
         #make right before copying
-        SLURM.run_until_done(to_run_dict,jobname_base,logbase,duration,mem,njobs,queue,MAX_RETRY=MAX_RETRY)
+        if slurm_cores > 1:
+            kwargs['ntasks-per-node'] = '%s' % slurm_cores
+        SLURM.run_until_done(to_run_dict,jobname_base,logbase,duration,mem,njobs,queue,MAX_RETRY=MAX_RETRY,**kwargs)
         if requeue:
-            SLURM.run_until_done(to_run_dict,jobname_base,logbase,duration,mem,njobs,requeue,MAX_RETRY=MAX_RETRY)
+            SLURM.run_until_done(to_run_dict,jobname_base,logbase,duration,mem,njobs,requeue,MAX_RETRY=MAX_RETRY,**kwargs)
     else:
         errstr = 'scheduler must be one of ["lsf","slurm"]; is %s' % opts.scheduler
         raise ValueError, errstr
@@ -271,7 +278,7 @@ def start_end_strs(li):
     end = '%s-%s' % (c,e)
     return start,end
 
-def call_variants_gatk_lsf(bams,ref,outroot,vcfbase,njobs=100,gatk_program='UnifiedGenotyper',gatk_args='-out_mode EMIT_ALL_CONFIDENT_SITES -dcov 50 -glm BOTH',gatk_jar=gatk_jar,gatk_ram=4,tmpdir=None,queue='normal_serial',job_ram='30000',MAX_RETRY=MAX_RETRY,include_regions=None,compress_vcf=True,fallback_queue=''):
+def call_variants_gatk_lsf(bams,ref,outroot,vcfbase,njobs=100,gatk_program='UnifiedGenotyper',gatk_args='-out_mode EMIT_ALL_CONFIDENT_SITES -dcov 200 -glm BOTH',gatk_jar=gatk_jar,gatk_ram=4,tmpdir=None,queue='normal_serial',job_ram='30000',MAX_RETRY=MAX_RETRY,include_regions=None,compress_vcf=True,fallback_queue='',scheduler=opts.scheduler):
     if tmpdir is None:
         tmpdir = os.path.join(outroot,'gatk_tmp')
     bamstr = ' -I '.join(bams)
@@ -290,7 +297,10 @@ def call_variants_gatk_lsf(bams,ref,outroot,vcfbase,njobs=100,gatk_program='Unif
     except:
         pass
 
-    to_run_dict = {}
+    logfile = os.path.join(vcf_parts_root,'logs',gatk_program)
+    ser_to_run_dict = {}
+    if scheduler == 'slurm':
+        par_to_run_dict = {}
     for i,reg in enumerate(regions):
         reg = [r for r in reg if not r.split(':')[0] in skip_contigs]
         if len(reg) == 0:
@@ -302,16 +312,35 @@ def call_variants_gatk_lsf(bams,ref,outroot,vcfbase,njobs=100,gatk_program='Unif
         cmd = 'java -Xmx%sg -Djava.io.tmpdir=%s -jar  %s -R %s -T %s -o %s %s -I %s -L %s' % (gatk_ram,tmpdir,gatk_jar,ref,gatk_program,partvcf,gatk_args,bamstr,regstr)
         #open(part_sh,'w').write('#!/usr/bin/env bash\n'+cmd+'\n')
         #os.system('chmod +x %s' % part_sh)
-        to_run_dict[partvcf] = run_safe.safe_script(cmd,partvcf,force_write=True)
+        if scheduler == 'slurm':
+            nprevsub = len(SLURM.previous_submissions(logfile,partvcf+'.sh'))
+            if nprevsub < MAX_RETRY:
+                ser_to_run_dict[partvcf] = run_safe.safe_script(cmd,partvcf,force_write=True)
+            else:
+                print >> sys.stderr, '\n%s failed %s previous runs; %s thread X %s core invoked' % (partvcf,nprevsub,GATK_PAR_NT,GATK_PAR_NCT)
+                cmd += ' -nt %s -nct %s' % (GATK_PAR_NT,GATK_PAR_NCT)
+                par_to_run_dict[partvcf] = run_safe.safe_script(cmd,partvcf,force_write=True)
+        else:
+            ser_to_run_dict[partvcf] = run_safe.safe_script(cmd,partvcf,force_write=True)
 
     #SLURM here
-    logfile = os.path.join(vcf_parts_root,'logs',gatk_program)
-    schedule_jobs(to_run_dict,opts.scheduler,'gatk',logfile,queue,requeue=fallback_queue,njobs=njobs,duration=2880,mem=(gatk_ram*1024)+JOB_MEM_OVERHEAD,flags='-R "select[mem>%s]"' % job_ram,MAX_RETRY=MAX_RETRY)
+    #SERIAL (one core) RUNS
+    schedule_jobs(ser_to_run_dict,scheduler,gatk_program,logfile,queue,requeue=fallback_queue,njobs=njobs,duration=2880,mem=(gatk_ram*1024)+JOB_MEM_OVERHEAD,flags='-R "select[mem>%s]"' % job_ram,MAX_RETRY=MAX_RETRY)
+    trd_keys = ser_to_run_dict.keys()
+    #PARALLEL (multithread) RUNS
+    if scheduler == 'slurm':
+        mt_cores = GATK_PAR_NT*GATK_PAR_NCT
+        mt_ram = ( (GATK_PAR_NT*gatk_ram*1024)+(JOB_MEM_OVERHEAD*GATK_PAR_NT) ) / float(mt_cores)
+        mt_ram = int(mt_ram)
+        print >> sys.stderr, '\nrun multithreaded %s: %s jobs; ram-per-core: %s cores: %s' % (gatk_program,len(par_to_run_dict),mt_ram,mt_cores)
+        schedule_jobs(par_to_run_dict,scheduler,gatk_program,logfile,queue,requeue=fallback_queue,njobs=njobs,duration=2880,mem=mt_ram,flags='-R "select[mem>%s]"' % job_ram,MAX_RETRY=MAX_RETRY,slurm_cores=mt_cores)
+        trd_keys.extend(par_to_run_dict.keys()
+    
     #LSF.lsf_run_until_done(to_run_dict,logfile,queue,'-R "select[mem>%s]"' % job_ram, 'gatk',njobs,MAX_RETRY)
     #if fallback_queue:
     #    LSF.lsf_run_until_done(to_run_dict,logfile,fallback_queue,'-R "select[mem>%s]"' % job_ram, 'gatk',njobs,MAX_RETRY)
 
-    cmd = merge_vcf_parts_cmd(to_run_dict.keys(),ref,gatkoutvcf,gatk_jar,gatk_ram,tmpdir)
+    cmd = merge_vcf_parts_cmd(trd_keys,ref,gatkoutvcf,gatk_jar,gatk_ram,tmpdir)
     ret = os.system(run_safe.safe_script(cmd,gatkoutvcf))
     if ret != 0:
         raise OSError, 'VCF merge failed:\n%s' % cmd
@@ -514,7 +543,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='performs stampy mapping')
     parser.add_argument('-v','--vcfname',default=None,help='if vcfname (filename) is supplied, will run GATK with --gatk_argstr and any additional BAM files specified using -a. VCF will be created in OUTROOT'+ds)
     parser.add_argument('-s','--stampy_argstr',default="'--sensitive --substitutionrate=0.02 --maxbasequal=60'",type=eval,help='arguments passed to stampy. Must be single AND double quoted for spaces'+ds)
-    parser.add_argument('-g','--gatk_argstr',default="'-out_mode EMIT_ALL_CONFIDENT_SITES -dcov 100'",type=eval,help='arguments passed to GATK (only relevant if --outvcf specified) Must be single AND double quoted for spaces.'+ds)
+    parser.add_argument('-g','--gatk_argstr',default="'-out_mode EMIT_ALL_CONFIDENT_SITES -dcov 200'",type=eval,help='arguments passed to GATK (only relevant if --outvcf specified) Must be single AND double quoted for spaces.'+ds)
     parser.add_argument('-gh','--gatkhaplo_argstr',default="'-out_mode EMIT_ALL_CONFIDENT_SITES -dr 50'",type=eval,help='arguments passed to GATKHaplotypeCaller (only relevant if --outvcf specified) Must be single AND double quoted for spaces.'+ds)
     parser.add_argument('-mp','--mpileup_argstr',default="''",type=eval,help='arguments passed to mpileup (only relevant if --outvcf specified) Must be single AND double quoted for spaces, e.g. "\'-r chr3\'"'+ds)
     parser.add_argument('-gr','--gatk_ram',default=8,type=int,help='java VM ram size (in GB).'+ds)
@@ -798,6 +827,9 @@ if __name__ == '__main__':
             #LSF.lsf_run_until_done(to_run_dict,logfile,opts.lsf_queue,'-R "select[mem>20000]"','realign-reduce',njobs,MAX_RETRY)
 
             #CHECK BAMS WITH samtools
+            to_run=[] #comment out when re-enabling check
+            """
+            #DISABLE
             print >> sys.stderr, 'run samtools quick check on %s bams:' % len(to_run)
             rerun = []
             for i,b in enumerate(to_run):
@@ -807,7 +839,7 @@ if __name__ == '__main__':
                     rerun.append(b)
 
             to_run = rerun
-
+            
             if rerun:
                 to_run_dict = {}
                 print >> sys.stderr, '%s bam(s) failed; remove and re-run' % len(rerun)
@@ -822,7 +854,8 @@ if __name__ == '__main__':
 
                 print >> sys.stderr, to_run_dict
             runs +=1
-                
+            #DISABLE
+            """
 
         #switch rg_ref_bams to reduced
         orig_rg_ref_bams = rg_ref_bams
