@@ -304,9 +304,9 @@ def call_variants_gatk_lsf(bams,ref,outroot,vcfbase,njobs=100,gatk_program='Unif
     if scheduler == 'slurm':
         par_to_run_dict = {}
 
-    print >> sys.stderr, 'Calculate %s runs: ' % gatk_program,
+    print >> sys.stderr, 'Calculate %s runs: ' % gatk_program
     for i,reg in enumerate(regions):
-        print >> sys.stderr, '%s / %s' % (i+1,len(regions)),
+        print >> sys.stderr, '\r\t%s / %s' % (i+1,len(regions)),
         reg = [r for r in reg if not r.split(':')[0] in skip_contigs]
         if len(reg) == 0:
             continue
