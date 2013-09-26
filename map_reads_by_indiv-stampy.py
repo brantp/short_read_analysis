@@ -278,7 +278,9 @@ def start_end_strs(li):
     end = '%s-%s' % (c,e)
     return start,end
 
-def call_variants_gatk_lsf(bams,ref,outroot,vcfbase,njobs=100,gatk_program='UnifiedGenotyper',gatk_args='-out_mode EMIT_ALL_CONFIDENT_SITES -dcov 200 -glm BOTH',gatk_jar=gatk_jar,gatk_ram=4,tmpdir=None,queue='normal_serial',job_ram='30000',MAX_RETRY=MAX_RETRY,include_regions=None,compress_vcf=True,fallback_queue='',scheduler=opts.scheduler):
+def call_variants_gatk_lsf(bams,ref,outroot,vcfbase,njobs=100,gatk_program='UnifiedGenotyper',gatk_args='-out_mode EMIT_ALL_CONFIDENT_SITES -dcov 200 -glm BOTH',gatk_jar=gatk_jar,gatk_ram=4,tmpdir=None,queue='normal_serial',job_ram='30000',MAX_RETRY=MAX_RETRY,include_regions=None,compress_vcf=True,fallback_queue='',scheduler=None):
+    if scheduler is None:
+        scheduler = 'slurm'
     if tmpdir is None:
         tmpdir = os.path.join(outroot,'gatk_tmp')
     bamstr = ' -I '.join(bams)
@@ -920,27 +922,27 @@ if __name__ == '__main__':
                                njobs=opts.num_batches, gatk_program='UnifiedGenotyper', \
                                gatk_args=opts.gatk_argstr, gatk_jar=gatk_jar, gatk_ram=gatkRAM, \
                                tmpdir=None, queue=opts.lsf_queue, job_ram='30000', MAX_RETRY=MAX_RETRY, \
-                               include_regions=include_regions,compress_vcf=True,fallback_queue=opts.fallback_queue)
+                               include_regions=include_regions,compress_vcf=True,fallback_queue=opts.fallback_queue,scheduler=opts.scheduler)
         #HaplotypeCaller
         if not opts.skip_haplo:
             call_variants_gatk_lsf(rg_ref_bams, reference_fasta, outroot, vcfname, \
                                    njobs=opts.num_batches, gatk_program='HaplotypeCaller', \
                                    gatk_args=opts.gatkhaplo_argstr, gatk_jar=gatk2_jar, gatk_ram=gatkRAM, \
                                    tmpdir=None, queue=opts.lsf_queue, job_ram='30000', MAX_RETRY=MAX_RETRY, \
-                                   include_regions=include_regions,compress_vcf=True,fallback_queue=opts.fallback_queue)
+                                   include_regions=include_regions,compress_vcf=True,fallback_queue=opts.fallback_queue,scheduler=opts.scheduler)
 
         if opts.realign:
             call_variants_gatk_lsf(realigned_bams, reference_fasta, outroot, vcfname+'-realign', \
                                    njobs=opts.num_batches, gatk_program='UnifiedGenotyper', \
                                    gatk_args=opts.gatk_argstr, gatk_jar=gatk_jar, gatk_ram=gatkRAM, \
                                    tmpdir=None, queue=opts.lsf_queue, job_ram='30000', MAX_RETRY=MAX_RETRY, \
-                                   include_regions=include_regions,compress_vcf=True,fallback_queue=opts.fallback_queue)
+                                   include_regions=include_regions,compress_vcf=True,fallback_queue=opts.fallback_queue,scheduler=opts.scheduler)
             if not opts.skip_haplo:
                 call_variants_gatk_lsf(realigned_bams, reference_fasta, outroot, vcfname+'-realign', \
                                        njobs=opts.num_batches, gatk_program='HaplotypeCaller', \
                                        gatk_args=opts.gatkhaplo_argstr, gatk_jar=gatk2_jar, gatk_ram=gatkRAM, \
                                        tmpdir=None, queue=opts.lsf_queue, job_ram='30000', MAX_RETRY=MAX_RETRY, \
-                                       include_regions=include_regions,compress_vcf=True,fallback_queue=opts.fallback_queue)
+                                       include_regions=include_regions,compress_vcf=True,fallback_queue=opts.fallback_queue,scheduler=opts.scheduler)
         
         #vcfbasename = vcfname.endswith('.vcf') and vcfname[:-4] or vcfname
         #gatkoutvcf = os.path.join(outroot,'%s-GATK.vcf' % vcfbasename)
