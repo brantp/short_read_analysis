@@ -140,7 +140,10 @@ def partition_reference(fasta,parts,include_regions=None):
         
 def realign_bams_lsf(bams,ref,outroot,njobs,min_ind_realign,queue='normal_serial',job_ram='20000',targetcreator_opts='--maxIntervalSize 5000',gatk_jar=gatk_jar,gatk_ram=8,force_links=False,MAX_RETRY=MAX_RETRY,fallback_queue=''):
     '''force_links replaces existing symlinks
-    job ram in MB
+    job_ram in MB
+    gatk_ram in GB
+
+    duration hardcoded to opts.max_job_duration; should be an argument
     '''
     realign_root = os.path.join(outroot,'realign')
     intervals_parts_root = os.path.join(realign_root,'parts')
@@ -211,7 +214,7 @@ def realign_bams_lsf(bams,ref,outroot,njobs,min_ind_realign,queue='normal_serial
 
         #SLURM HERE
         logfile = os.path.join(intervals_parts_root,'logs','RealignerTargetCreator')
-        schedule_jobs(to_run_dict,opts.scheduler,'targetcreator',logfile,queue,requeue=fallback_queue,njobs=njobs,duration=2880,mem=(gatk_ram*1024)+JOB_MEM_OVERHEAD,flags='-R "select[mem>%s]"' % job_ram,MAX_RETRY=MAX_RETRY)
+        schedule_jobs(to_run_dict,opts.scheduler,'targetcreator',logfile,queue,requeue=fallback_queue,njobs=njobs,duration=opts.max_job_duration,mem=(gatk_ram*1024)+JOB_MEM_OVERHEAD,flags='-R "select[mem>%s]"' % job_ram,MAX_RETRY=MAX_RETRY)
         #LSF.lsf_run_until_done(to_run_dict,logfile,queue,'-R "select[mem>%s]"' % job_ram, 'targetcreator',njobs,MAX_RETRY)
         #if fallback_queue:
         #    LSF.lsf_run_until_done(to_run_dict,logfile,fallback_queue,'-R "select[mem>%s]"' % job_ram, 'targetcreator',njobs,MAX_RETRY)
@@ -254,7 +257,7 @@ def realign_bams_lsf(bams,ref,outroot,njobs,min_ind_realign,queue='normal_serial
 
         #SLURM here
         logfile = os.path.join(realign_root,'logs','IndelRealigner')
-        schedule_jobs(to_run_dict,opts.scheduler,'realigner',logfile,queue,requeue=fallback_queue,njobs=njobs,duration=2880,mem=(gatk_ram*1024)+JOB_MEM_OVERHEAD,flags='-R "select[mem>%s]"' % job_ram,MAX_RETRY=MAX_RETRY)
+        schedule_jobs(to_run_dict,opts.scheduler,'realigner',logfile,queue,requeue=fallback_queue,njobs=njobs,duration=opts.max_job_duration,mem=(gatk_ram*1024)+JOB_MEM_OVERHEAD,flags='-R "select[mem>%s]"' % job_ram,MAX_RETRY=MAX_RETRY)
         #LSF.lsf_run_until_done(to_run_dict,logfile,queue,'-R "select[mem>%s]"' % job_ram, 'realigner',njobs,MAX_RETRY)
         #if fallback_queue:
         #    LSF.lsf_run_until_done(to_run_dict,logfile,fallback_queue,'-R "select[mem>%s]"' % job_ram, 'realigner',njobs,MAX_RETRY)
@@ -278,7 +281,7 @@ def start_end_strs(li):
     end = '%s-%s' % (c,e)
     return start,end
 
-def call_variants_gatk_lsf(bams,ref,outroot,vcfbase,njobs=100,gatk_program='UnifiedGenotyper',gatk_args='-out_mode EMIT_ALL_CONFIDENT_SITES -dcov 200 -glm BOTH',gatk_jar=gatk_jar,gatk_ram=4,tmpdir=None,queue='normal_serial',job_ram='30000',MAX_RETRY=MAX_RETRY,include_regions=None,compress_vcf=True,fallback_queue='',scheduler=None):
+def call_variants_gatk_lsf(bams,ref,outroot,vcfbase,njobs=100,gatk_program='UnifiedGenotyper',gatk_args='-out_mode EMIT_ALL_CONFIDENT_SITES -dcov 200 -glm BOTH',gatk_jar=gatk_jar,gatk_ram=4,tmpdir=None,queue='normal_serial',job_ram='30000',MAX_RETRY=MAX_RETRY,include_regions=None,compress_vcf=True,fallback_queue='',scheduler=None,duration=opts.max_job_duration):
     if scheduler is None:
         scheduler = 'slurm'
     if tmpdir is None:
@@ -330,7 +333,7 @@ def call_variants_gatk_lsf(bams,ref,outroot,vcfbase,njobs=100,gatk_program='Unif
 
     #SLURM here
     #SERIAL (one core) RUNS
-    schedule_jobs(ser_to_run_dict,scheduler,gatk_program,logfile,queue,requeue=fallback_queue,njobs=njobs,duration=2880,mem=(gatk_ram*1024)+JOB_MEM_OVERHEAD,flags='-R "select[mem>%s]"' % job_ram,MAX_RETRY=MAX_RETRY)
+    schedule_jobs(ser_to_run_dict,scheduler,gatk_program,logfile,queue,requeue=fallback_queue,njobs=njobs,duration=duration,mem=(gatk_ram*1024)+JOB_MEM_OVERHEAD,flags='-R "select[mem>%s]"' % job_ram,MAX_RETRY=MAX_RETRY)
     trd_keys = ser_to_run_dict.keys()
     #PARALLEL (multithread) RUNS
     if scheduler == 'slurm':
@@ -338,7 +341,7 @@ def call_variants_gatk_lsf(bams,ref,outroot,vcfbase,njobs=100,gatk_program='Unif
         mt_ram = ( (GATK_PAR_NT*gatk_ram*1024)+(JOB_MEM_OVERHEAD*GATK_PAR_NT) ) / float(mt_cores)
         mt_ram = int(mt_ram)
         print >> sys.stderr, '\nrun multithreaded %s: %s jobs; ram-per-core: %s cores: %s' % (gatk_program,len(par_to_run_dict),mt_ram,mt_cores)
-        schedule_jobs(par_to_run_dict,scheduler,gatk_program,logfile,queue,requeue=fallback_queue,njobs=njobs,duration=2880,mem=mt_ram,flags='-R "select[mem>%s]"' % job_ram,MAX_RETRY=MAX_RETRY,slurm_cores=mt_cores)
+        schedule_jobs(par_to_run_dict,scheduler,gatk_program,logfile,queue,requeue=fallback_queue,njobs=njobs,duration=opts.max_job_duration,mem=mt_ram,flags='-R "select[mem>%s]"' % job_ram,MAX_RETRY=MAX_RETRY,slurm_cores=mt_cores)
         trd_keys.extend(par_to_run_dict.keys())
     
     #LSF.lsf_run_until_done(to_run_dict,logfile,queue,'-R "select[mem>%s]"' % job_ram, 'gatk',njobs,MAX_RETRY)
@@ -401,7 +404,7 @@ def call_variants_mpileup_lsf(bams,ref,outroot,vcfbase,njobs=100,mpileup_args=''
 
     #SLURM here
     logfile = os.path.join(vcf_parts_root,'logs','mpileup-parts')
-    schedule_jobs(to_run_dict,opts.scheduler,'mpileup',logfile,queue,requeue=fallback_queue,njobs=njobs,duration=2880,mem=(gatk_ram*1024)+JOB_MEM_OVERHEAD,flags='-R "select[mem>%s]"' % job_ram,MAX_RETRY=MAX_RETRY)
+    schedule_jobs(to_run_dict,opts.scheduler,'mpileup',logfile,queue,requeue=fallback_queue,njobs=njobs,duration=opts.max_job_duration,mem=(gatk_ram*1024)+JOB_MEM_OVERHEAD,flags='-R "select[mem>%s]"' % job_ram,MAX_RETRY=MAX_RETRY)
     #LSF.lsf_run_until_done(to_run_dict,logfile,queue,'-R "select[mem>%s]"' % job_ram, 'mpileup',njobs,MAX_RETRY)
 
     cmd = run_safe.safe_script(merge_vcf_parts_cmd(subparts,ref,mpoutvcf,gatk_jar,gatk_ram,tmpdir),mpoutvcf)
@@ -776,7 +779,7 @@ if __name__ == '__main__':
     else:
         #SLURM example
         logfile = os.path.join(outroot,'%slog' % opts.scheduler,'stampy-%s-%s-log' % (bp,tb))
-        schedule_jobs(cmd_by_sam,opts.scheduler,'stampy',logfile,opts.lsf_queue,requeue=opts.fallback_queue,njobs=njobs,duration=2880,mem=(opts.gatk_ram*1024)+JOB_MEM_OVERHEAD,flags='-R "select[mem>20000]"',MAX_RETRY=MAX_RETRY)
+        schedule_jobs(cmd_by_sam,opts.scheduler,'stampy',logfile,opts.lsf_queue,requeue=opts.fallback_queue,njobs=njobs,duration=opts.max_job_duration,mem=(opts.gatk_ram*1024)+JOB_MEM_OVERHEAD,flags='-R "select[mem>20000]"',MAX_RETRY=MAX_RETRY)
 
     #MERGE SAM PARTS FROM STAMPY
     cmds = []
@@ -791,7 +794,7 @@ if __name__ == '__main__':
     else:
         #SLURM here
         logfile = os.path.join(outroot,'%slog' % opts.scheduler,'merge-%s-%s-log' % (bp,tb))
-        schedule_jobs(mergecmds_by_bam,opts.scheduler,'stampy-merge',logfile,opts.lsf_queue,requeue=opts.fallback_queue,njobs=njobs,duration=2880,mem=(opts.gatk_ram*1024)+JOB_MEM_OVERHEAD,flags='-R "select[mem>20000]"',MAX_RETRY=MAX_RETRY)
+        schedule_jobs(mergecmds_by_bam,opts.scheduler,'stampy-merge',logfile,opts.lsf_queue,requeue=opts.fallback_queue,njobs=njobs,duration=opts.max_job_duration,mem=(opts.gatk_ram*1024)+JOB_MEM_OVERHEAD,flags='-R "select[mem>20000]"',MAX_RETRY=MAX_RETRY)
         #LSF.lsf_run_until_done(mergecmds_by_bam,logfile,opts.lsf_queue,'-R "select[mem>20000]"','stampy-merge',njobs,MAX_RETRY)
 
     if opts.cleanup:
@@ -828,7 +831,7 @@ if __name__ == '__main__':
                 raise ValueError
 
             logfile = os.path.join(outroot,'%slog' % opts.scheduler,'realign-reduce-log')
-            schedule_jobs(to_run_dict,opts.scheduler,'realign-reduce',logfile,opts.lsf_queue,requeue=opts.fallback_queue,njobs=njobs,duration=2880,mem=(opts.gatk_ram*1024)+JOB_MEM_OVERHEAD,flags='-R "select[mem>20000]"',MAX_RETRY=MAX_RETRY)
+            schedule_jobs(to_run_dict,opts.scheduler,'realign-reduce',logfile,opts.lsf_queue,requeue=opts.fallback_queue,njobs=njobs,duration=opts.max_job_duration,mem=(opts.gatk_ram*1024)+JOB_MEM_OVERHEAD,flags='-R "select[mem>20000]"',MAX_RETRY=MAX_RETRY)
             #LSF.lsf_run_until_done(to_run_dict,logfile,opts.lsf_queue,'-R "select[mem>20000]"','realign-reduce',njobs,MAX_RETRY)
 
             #CHECK BAMS WITH samtools
@@ -925,27 +928,31 @@ if __name__ == '__main__':
                                njobs=opts.num_batches, gatk_program='UnifiedGenotyper', \
                                gatk_args=opts.gatk_argstr, gatk_jar=gatk_jar, gatk_ram=gatkRAM, \
                                tmpdir=None, queue=opts.lsf_queue, job_ram='30000', MAX_RETRY=MAX_RETRY, \
-                               include_regions=include_regions,compress_vcf=True,fallback_queue=opts.fallback_queue,scheduler=opts.scheduler)
+                               include_regions=include_regions,compress_vcf=True, \
+                               fallback_queue=opts.fallback_queue,scheduler=opts.scheduler,duration=opts.max_job_duration)
         #HaplotypeCaller
         if not opts.skip_haplo:
             call_variants_gatk_lsf(rg_ref_bams, reference_fasta, outroot, vcfname, \
                                    njobs=opts.num_batches, gatk_program='HaplotypeCaller', \
                                    gatk_args=opts.gatkhaplo_argstr, gatk_jar=gatk2_jar, gatk_ram=gatkRAM, \
                                    tmpdir=None, queue=opts.lsf_queue, job_ram='30000', MAX_RETRY=MAX_RETRY, \
-                                   include_regions=include_regions,compress_vcf=True,fallback_queue=opts.fallback_queue,scheduler=opts.scheduler)
+                                   include_regions=include_regions,compress_vcf=True, \
+                                   fallback_queue=opts.fallback_queue,scheduler=opts.scheduler,duration=opts.max_job_duration)
 
         if opts.realign:
             call_variants_gatk_lsf(realigned_bams, reference_fasta, outroot, vcfname+'-realign', \
                                    njobs=opts.num_batches, gatk_program='UnifiedGenotyper', \
                                    gatk_args=opts.gatk_argstr, gatk_jar=gatk_jar, gatk_ram=gatkRAM, \
                                    tmpdir=None, queue=opts.lsf_queue, job_ram='30000', MAX_RETRY=MAX_RETRY, \
-                                   include_regions=include_regions,compress_vcf=True,fallback_queue=opts.fallback_queue,scheduler=opts.scheduler)
+                                   include_regions=include_regions,compress_vcf=True, \
+                                   fallback_queue=opts.fallback_queue,scheduler=opts.scheduler,duration=opts.max_job_duration)
             if not opts.skip_haplo:
                 call_variants_gatk_lsf(realigned_bams, reference_fasta, outroot, vcfname+'-realign', \
                                        njobs=opts.num_batches, gatk_program='HaplotypeCaller', \
                                        gatk_args=opts.gatkhaplo_argstr, gatk_jar=gatk2_jar, gatk_ram=gatkRAM, \
                                        tmpdir=None, queue=opts.lsf_queue, job_ram='30000', MAX_RETRY=MAX_RETRY, \
-                                       include_regions=include_regions,compress_vcf=True,fallback_queue=opts.fallback_queue,scheduler=opts.scheduler)
+                                       include_regions=include_regions,compress_vcf=True, \
+                                       fallback_queue=opts.fallback_queue,scheduler=opts.scheduler,duration=opts.max_job_duration)
         
         #vcfbasename = vcfname.endswith('.vcf') and vcfname[:-4] or vcfname
         #gatkoutvcf = os.path.join(outroot,'%s-GATK.vcf' % vcfbasename)
