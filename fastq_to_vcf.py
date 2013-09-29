@@ -31,12 +31,12 @@ where:
 
 --PREPROCESS (overlap/trim/demultiplex)
 for paired end data:
-overlap_preprocess.py is invoked to merge overlapping paired ends
+overlap_preprocess.py (rtd) is invoked to merge overlapping paired ends
 \tand remove adapter sequence readthrough.
-preprocess_radtag_lane.py is used to demultiplex according to gdoc spreadsheet
+preprocess_radtag_lane.py (rtd) is used to demultiplex according to gdoc spreadsheet
 
 for single read data:
-preprocess_radtag_lane.py is used to demultiplex according to gdoc spreadsheet
+preprocess_radtag_lane.py (rtd) is used to demultiplex according to gdoc spreadsheet
 
 --ALIGNMENT
 All demultplexed reads are submitted to map_reads_by_indiv-stampy.py
@@ -62,6 +62,7 @@ lots.  But a single vcf per genotyper is generated in specified outroot
 '''
 
 from rtd import preprocess_radtag_lane,config
+from glob import glob
 
 import os,sys,re
 import run_safe
@@ -75,7 +76,25 @@ try:
 except:
     print >> sys.stderr, 'SLURM unavailable'
         
+def get_ext(fname):
+    if fname.endswith('.gz'):
+        base,ext = os.path.splitext(fname)
+    else:
+        base = fname
+        ext = ''
+    ext = os.path.splitext(base)[1] + ext
+    return ext
 
+def sample_fq_from_expected(expected_fq_d):
+    fq_by_sample = []
+    for k,v in expected_fq_d.items():
+        fqs = glob(k)
+        if len(fqs) == v:
+            fq_by_sample.extend(fqs)
+        else:
+            errstr = '%s matches to %s (expected %s)' % (len(fqs),k,v)
+            raise ValueError,errstr
+    return fq_by_sample
 
 multiplex_idx_db = 'DB_multiplex_indices'
 tcp_host = 'heroint4'
@@ -90,13 +109,13 @@ if __name__ == '__main__':
     ds =  ' [%(default)s]'
     #create command line parser
     parser = argparse.ArgumentParser(description=argparse_description, formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument('-jr','--job_ram',default=32,type=int,help='job ram size (in GB).'+ds)
+    parser.add_argument('-jr','--job_ram',default=6,type=int,help='job ram size (in GB).'+ds)
     
     parser.add_argument('-n','--num_batches',default=100,type=int,help='target number of batches to submit to scheduler.'+ds)
     parser.add_argument('-q','--queue',default='general',type=str,help='submission queue. (Treated as slurm partition if --scheduler=SLURM)'+ds)
     parser.add_argument('-fbq','--fallback_queue',default='',type=str,help='fallback LSF/slurm submission queue; invoked after MAX_RETRY failed LSF reruns on --lsf_queue.'+ds)
     parser.add_argument('-sched','--scheduler',default='slurm',type=str,help='Scheduler to submit jobs to.  Current support for "lsf" and "slurm"'+ds)
-    parser.add_argument('-mjd','--max_job_duration',default=4230,type=int,help='slurm job max duration (in minutes)'+ds)
+    parser.add_argument('-mjd','--max_job_duration',default=1440,type=int,help='slurm job max duration (in minutes)'+ds)
 
     parser.add_argument('--force_db_id',action='store_true',help='force mouse database ids for individuals \n(replacing legacy sampleid from DB_library_data)'+ds)
 
@@ -105,7 +124,7 @@ if __name__ == '__main__':
     #argument strings for map_read_by_indiv-stampy.py
     parser.add_argument('-s','--stampy_argstr',default="'--sensitive --substitutionrate=0.02 --maxbasequal=60'",type=eval, \
                         help='arguments passed to stampy. \nMust be single AND double quoted for spaces'+ds)
-    parser.add_argument('-g','--gatk_argstr',default="'-out_mode EMIT_ALL_CONFIDENT_SITES -dcov 100'",type=eval, \
+    parser.add_argument('-g','--gatk_argstr',default="'-out_mode EMIT_ALL_CONFIDENT_SITES -dcov 200 -glm BOTH'",type=eval, \
                         help='arguments passed to GATK UnifiedGenotyper. \nMust be single AND double quoted for spaces.'+ds)
     parser.add_argument('-gh','--gatkhaplo_argstr',default="'-out_mode EMIT_ALL_CONFIDENT_SITES -dr 50'",type=eval, \
                         help='arguments passed to GATK HaplotypeCaller. \nMust be single AND double quoted for spaces.'+ds)
@@ -134,11 +153,25 @@ if __name__ == '__main__':
     print >> sys.stderr, '%s individual records found for projects %s' % (len(td),opts.projects)
 
     preprocess_targets = []
-
-    for d in td:
+    expected_fq_d = {}
+    
+    for d in td: #UPDATE FOR DB ID LOOKUP
         r1,r2 = preprocess_radtag_lane.fq_path_from_db_dict(d,index_lookup)
         if r1:
             preprocess_targets.append(((r1,r2),(d['flowcell'],d['lane'],d.get('index',None),d.get('cutsite','AATTC'))))
+            if r2:
+                glob_key = os.path.join(d['datapath'], \
+                                        'reads_by_individual', \
+                                        '%s_lane%s_index%s_trim' % (d['flowcell'],d['lane'],d.get('index',None)), \
+                                        '%s*%s' % (d['sampleid'],get_ext(r1)) )
+                expected_fq_d[glob_key] = 2
+                glob_key = os.path.join(d['datapath'], \
+                                        'reads_by_individual', \
+                                        '%s_lane%s_index%s_merge' % (d['flowcell'],d['lane'],d.get('index',None)), \
+                                        '%s*%s' % (d['sampleid'],get_ext(r1)) )
+                expected_fq_d[glob_key] = 1
+            else:
+                expected_fq_d[glob_key] = 1
         else:
             errstr = 'no fastq for %s' % d
             raise ValueError, errstr
@@ -172,15 +205,14 @@ if __name__ == '__main__':
     SLURM.run_until_done(to_run_dict,jobname_base,logbase,opts.max_job_duration,(opts.job_ram+1)*1024,opts.num_batches,opts.queue,MAX_RETRY=MAX_RETRY)
 
     #collect individual fastq/fastq pairs
-    #QUICK VERSION: ALL .txt.gz AND .fastq.gz IN reads_by_indiv FOLDER
-
     #(LATER: GET INDIVIDUAL FILES BY DB LOOKUP; REQUIRES HANDLING MOUSE DB ID LOOKUP IF SET)
+    fq_to_run = sample_fq_from_expected(expected_fq_d)
+    #print fq_to_run
 
-    map_reads_cmd = map_reads_exec + ' -gr %s -n %s -q %s -fbq %s -sched %s -mjd %s -v %s -s \'"%s"\' -g \'"%s"\' -gh \'"%s"\' -mp \'"%s"\' %s %s %s' % \
+    map_reads_cmd = map_reads_exec + ' -gr %s -n %s -q %s -sched %s -mjd %s -v %s -s \'"%s"\' -g \'"%s"\' -gh \'"%s"\' -mp \'"%s"\' %s %s %s ' % \
                     (opts.job_ram, \
                      opts.num_batches, \
                      opts.queue, \
-                     opts.fallback_queue,\
                      opts.scheduler, \
                      opts.max_job_duration, \
                      vcfname, \
@@ -192,6 +224,8 @@ if __name__ == '__main__':
                      opts.reference_fasta, \
                      opts.outroot)
 
+    map_reads_cmd += ' '.join(fq_to_run)
+    
     print >> sys.stderr, 'run map_reads in %s' % (os.path.join(opts.outroot,vcfname))
     map_reads_ss = run_safe.safe_script(map_reads_cmd,os.path.join(opts.outroot,vcfname),force_write=True)
-    print map_reads_ss
+    ret = os.system(map_reads_ss)

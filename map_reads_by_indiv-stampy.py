@@ -47,7 +47,7 @@ picard_seqdict_jar = os.path.join(picard_jar_root,'CreateSequenceDictionary.jar'
 #stampy set below; now uses opts.scheduler to discriminate centos5/centos6
 
 min_ind_realign = 12
-MAX_RETRY = 3
+MAX_RETRY = 2
 MERGE_BAMS_ABOVE = 50
 JOB_MEM_OVERHEAD = 1024 #RAM in MB to request above --gatk_ram value for slurm jobs
 
