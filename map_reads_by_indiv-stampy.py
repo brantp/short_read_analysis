@@ -50,6 +50,7 @@ min_ind_realign = 12
 MAX_RETRY = 2
 MERGE_BAMS_ABOVE = 50
 JOB_MEM_OVERHEAD = 1024 #RAM in MB to request above --gatk_ram value for slurm jobs
+DURATION_DEFAULT = 2880
 
 #temporarily hardcoded genotyper parallelization for "hard" jobs (jobs run more than MAX_RETRY in genotyping) [GATK ONLY]
 GATK_PAR_NT = 8
@@ -57,7 +58,13 @@ GATK_PAR_NCT = 8
 
 skip_contigs = [] #['ruf_bac_7180000001736']
 
-def schedule_jobs(to_run_dict,scheduler,jobname_base,logbase,queue,requeue=None,njobs=None,duration=1440,mem=2048,flags='',MAX_RETRY=MAX_RETRY,slurm_cores=1):
+def schedule_jobs(to_run_dict,scheduler,jobname_base,logbase,queue,requeue=None,njobs=None,duration=None,mem=2048,flags='',MAX_RETRY=MAX_RETRY,slurm_cores=1):
+
+    if duration is None:
+        try:
+            duration = opts.max_job_duration
+        except:
+            duration = DURATION_DFAULT
     if njobs is None:
         njobs = len(trd)
         
@@ -281,7 +288,14 @@ def start_end_strs(li):
     end = '%s-%s' % (c,e)
     return start,end
 
-def call_variants_gatk_lsf(bams,ref,outroot,vcfbase,njobs=100,gatk_program='UnifiedGenotyper',gatk_args='-out_mode EMIT_ALL_CONFIDENT_SITES -dcov 200 -glm BOTH',gatk_jar=gatk_jar,gatk_ram=4,tmpdir=None,queue='normal_serial',job_ram='30000',MAX_RETRY=MAX_RETRY,include_regions=None,compress_vcf=True,fallback_queue='',scheduler=None,duration=opts.max_job_duration):
+def call_variants_gatk_lsf(bams,ref,outroot,vcfbase,njobs=100,gatk_program='UnifiedGenotyper',gatk_args='-out_mode EMIT_ALL_CONFIDENT_SITES -dcov 200 -glm BOTH',gatk_jar=gatk_jar,gatk_ram=4,tmpdir=None,queue='normal_serial',job_ram='30000',MAX_RETRY=MAX_RETRY,include_regions=None,compress_vcf=True,fallback_queue='',scheduler=None,duration=None):
+
+    if duration is None:
+        try:
+            duration = opts.max_job_duration
+        except:
+            duration = DURATION_DFAULT
+            
     if scheduler is None:
         scheduler = 'slurm'
     if tmpdir is None:
@@ -341,7 +355,7 @@ def call_variants_gatk_lsf(bams,ref,outroot,vcfbase,njobs=100,gatk_program='Unif
         mt_ram = ( (GATK_PAR_NT*gatk_ram*1024)+(JOB_MEM_OVERHEAD*GATK_PAR_NT) ) / float(mt_cores)
         mt_ram = int(mt_ram)
         print >> sys.stderr, '\nrun multithreaded %s: %s jobs; ram-per-core: %s cores: %s' % (gatk_program,len(par_to_run_dict),mt_ram,mt_cores)
-        schedule_jobs(par_to_run_dict,scheduler,gatk_program,logfile,queue,requeue=fallback_queue,njobs=njobs,duration=opts.max_job_duration,mem=mt_ram,flags='-R "select[mem>%s]"' % job_ram,MAX_RETRY=MAX_RETRY,slurm_cores=mt_cores)
+        schedule_jobs(par_to_run_dict,scheduler,gatk_program,logfile,queue,requeue=fallback_queue,njobs=njobs,duration=duration,mem=mt_ram,flags='-R "select[mem>%s]"' % job_ram,MAX_RETRY=MAX_RETRY,slurm_cores=mt_cores)
         trd_keys.extend(par_to_run_dict.keys())
     
     #LSF.lsf_run_until_done(to_run_dict,logfile,queue,'-R "select[mem>%s]"' % job_ram, 'gatk',njobs,MAX_RETRY)
