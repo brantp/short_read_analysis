@@ -57,8 +57,9 @@ def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cu
     
     i = 0
     for line in smartopen(vcf):
-        if write_thresholded_vcf is not None and line.startswith('##'):
-            ofh.write(line)
+        #currently not writing full headers to filtered
+        #if write_thresholded_vcf is not None and line.startswith('##'):
+        #    ofh.write(line)
         
         if i % ding_on == 0: print >> sys.stderr, 'reading',i
         i += 1
@@ -69,11 +70,10 @@ def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cu
             continue
 
         if line.startswith('#CHROM'):
-            if write_thresholded_vcf is not None:
-                ofh.write(line)
-            headers = line[1:].split()
-            exp_elements = len(line.split())
+            headers = line[1:].split('\t')
+            exp_elements = len(line.split('\t'))
             FORMAT = headers.index('FORMAT')
+            INFO = headers.index('INFO')
             indivs = headers[FORMAT+1:]
             if write_fasta_base is not None: #DON'T INCLUDE DROP_INDIV
                 if drop_indiv is not None:
@@ -93,11 +93,19 @@ def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cu
                     print >> sys.stderr, 'length of keep set (%s) greater than length of drop set (%s); use drop' % (len(all_keep),len(all_drop))
                     keep_indiv = None
                     drop_indiv = list(all_drop)
+            else:
+                all_keep = set(indivs)
+                all_drop = set([])
+            if write_thresholded_vcf is not None:
+                newheaders = headers[:FORMAT+1]+[h for h in headers[FORMAT+1:] if h in all_keep]
+                newhline = '#'+('\t'.join(newheaders))+'\n'
+                ofh.write(newhline)
+
         elif line.startswith('#'):
             continue
         else:
             #extract site stats
-            fields = line.split()
+            fields = line.split('\t')
             if len(fields) != exp_elements:
                 print >>sys.stderr, 'unexpected length, line %s (exp %s obs %s)' % (i,exp_elements,len(fields))
                 continue
@@ -152,12 +160,13 @@ def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cu
                             print >> sys.stderr, 'GQ field absent (%s) and noGQ parameter not in [keep|skip] (is: %s)' % (gt,noGQ)
                             raise
 
-            if write_thresholded_vcf is not None: #ugly hack to "zero out" below-thresh GTs
-                for i in range(FORMAT+1,len(fields)):
-                    if ':' in fields[i]:
-                        this_gt = dict(zip(fields[FORMAT].split(':'),fields[i].split(':')))
-                        if indiv_gt_phred_cut is not None and float(this_gt['GQ']) < indiv_gt_phred_cut:
-                            fields[i] = './.'
+            #write_thresholded now constructs from sd; no need to modify fields
+            #if write_thresholded_vcf is not None: #ugly hack to "zero out" below-thresh GTs
+            #    for i in range(FORMAT+1,len(fields)):
+            #        if ':' in fields[i]:
+            #            this_gt = dict(zip(fields[FORMAT].split(':'),fields[i].split(':')))
+            #            if indiv_gt_phred_cut is not None and float(this_gt['GQ']) < indiv_gt_phred_cut:
+            #                fields[i] = './.'
 
             if len(sd['indiv_gt']) > 0:
                 if ',' in sd['ALT']:
@@ -208,6 +217,17 @@ def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cu
                                            
 
             if cutoff_fn is None or cutoff_fn(sd):
+                if write_thresholded_vcf is not None:
+                    format_f = list(set(reduce(lambda x,y:x+y, [d.keys() for d in sd['indiv_gt'].values()])))
+                    format_f.sort(key=lambda x: fields[FORMAT].split(':').index(x) if x in fields[FORMAT] else numpy.inf)
+                    info_f = list(set(sd.keys())-set(['indiv_gt'])-set(headers[:INFO]))
+                    newdline = ('\t'.join([('\t'.join([sd.get(f,'.') for f in headers[:INFO]])), \
+                                           (';'.join(['%s=%s' % (f,sd[f]) for f in info_f])), \
+                                           (':'.join(format_f))] +\
+                                          [':'.join([sd['indiv_gt'][ind][f] for f in format_f]) if ind in sd['indiv_gt'] else './.' \
+                                           for ind in newheaders[FORMAT+1:]])) + '\n'
+                    #replace this with line reconstituted from sd
+                    ofh.write(newdline)
                 if store_only is not None:
                     keep_sd = {}
                     for k in sd:
@@ -216,8 +236,6 @@ def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cu
                     sd = keep_sd
                 if len(sd) > 0:
                     vcf_data[key] = sd
-                if write_thresholded_vcf is not None:
-                    ofh.write('\t'.join(fields) + '\n')
 
                     
     if write_thresholded_vcf is not None:           

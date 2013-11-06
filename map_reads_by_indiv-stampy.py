@@ -566,7 +566,7 @@ if __name__ == '__main__':
     parser.add_argument('-v','--vcfname',default=None,help='if vcfname (filename) is supplied, will run GATK with --gatk_argstr and any additional BAM files specified using -a. VCF will be created in OUTROOT'+ds)
     parser.add_argument('-s','--stampy_argstr',default="'--sensitive --substitutionrate=0.02 --maxbasequal=60'",type=eval,help='arguments passed to stampy. Must be single AND double quoted for spaces'+ds)
     parser.add_argument('-g','--gatk_argstr',default="'-out_mode EMIT_ALL_CONFIDENT_SITES -dcov 200'",type=eval,help='arguments passed to GATK (only relevant if --outvcf specified) Must be single AND double quoted for spaces.'+ds)
-    parser.add_argument('-gh','--gatkhaplo_argstr',default="'-out_mode EMIT_ALL_CONFIDENT_SITES -dr 50'",type=eval,help='arguments passed to GATKHaplotypeCaller (only relevant if --outvcf specified) Must be single AND double quoted for spaces.'+ds)
+    parser.add_argument('-gh','--gatkhaplo_argstr',default="'-dcov 200'",type=eval,help='arguments passed to GATKHaplotypeCaller (only relevant if --outvcf specified) Must be single AND double quoted for spaces.'+ds)
     parser.add_argument('-mp','--mpileup_argstr',default="''",type=eval,help='arguments passed to mpileup (only relevant if --outvcf specified) Must be single AND double quoted for spaces, e.g. "\'-r chr3\'"'+ds)
     parser.add_argument('-gr','--gatk_ram',default=8,type=int,help='java VM ram size (in GB).'+ds)
     
@@ -876,7 +876,7 @@ if __name__ == '__main__':
 
                 print >> sys.stderr, to_run_dict
             runs +=1
-            #DISABLE
+            #\DISABLE
             """
 
         #switch rg_ref_bams to reduced

@@ -97,7 +97,7 @@ def sample_fq_from_expected(expected_fq_d):
     return fq_by_sample
 
 multiplex_idx_db = 'DB_multiplex_indices'
-tcp_host = 'heroint4'
+tcp_host = 'heroint1'
 MAX_RETRY = 3
 
 map_reads_exec = 'map_reads_by_indiv-stampy.py'
@@ -154,24 +154,37 @@ if __name__ == '__main__':
 
     preprocess_targets = []
     expected_fq_d = {}
+
+    if opts.force_db_id:
+        transtable,failures = preprocess_radtag_lane.get_legacy_to_DB_lookup(td)
     
     for d in td: #UPDATE FOR DB ID LOOKUP
+        if opts.force_db_id:
+            if d['sampleid'] in transtable:
+                ind = transtable[d['sampleid']]
+            else:
+                print >> sys.stderr, '%s not in transtable' % d['sampleid'] 
+        else:
+            ind = d['sampleid']
+            
         r1,r2 = preprocess_radtag_lane.fq_path_from_db_dict(d,index_lookup)
         if r1:
+            print >> sys.stderr, r1,r2,d,index_lookup
             preprocess_targets.append(((r1,r2),(d['flowcell'],d['lane'],d.get('index',None),d.get('cutsite','AATTC'))))
             if r2:
                 glob_key = os.path.join(d['datapath'], \
                                         'reads_by_individual', \
                                         '%s_lane%s_index%s_trim' % (d['flowcell'],d['lane'],d.get('index',None)), \
-                                        '%s*%s' % (d['sampleid'],get_ext(r1)) )
+                                        '%s*%s' % (ind,get_ext(r1)) )
                 expected_fq_d[glob_key] = 2
                 glob_key = os.path.join(d['datapath'], \
                                         'reads_by_individual', \
                                         '%s_lane%s_index%s_merge' % (d['flowcell'],d['lane'],d.get('index',None)), \
-                                        '%s*%s' % (d['sampleid'],get_ext(r1)) )
+                                        '%s*%s' % (ind,get_ext(r1)) )
                 expected_fq_d[glob_key] = 1
             else:
-                expected_fq_d[glob_key] = 1
+                raise ValueError, 'single reads unsupported'
+                #expected_fq_d[glob_key] = 1
         else:
             errstr = 'no fastq for %s' % d
             raise ValueError, errstr
