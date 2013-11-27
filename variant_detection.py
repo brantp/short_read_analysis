@@ -523,7 +523,7 @@ def add_vcf_data(ref_vcf,*vcfs):
     return ref_vcf_copy
         
 
-def one_site_per_chrom(vcfdict,max_fn,filter_fn):
+def one_site_per_chrom(vcfdict, max_fn=lambda v: len(v['indiv_gt']), filter_fn=lambda v: v['maf'] < 0.05, min_spacing=10000):
     '''given a vcf dictionary per load_vcf
 
     takes one site per chromosome (key[0]) for which filter_fn[v] == False and
@@ -532,14 +532,19 @@ def one_site_per_chrom(vcfdict,max_fn,filter_fn):
     returns dictionary {chrom:site}
     '''
 
-    topsites = {}
-    for k,v in vcfdict.items():
+    vcfsites = sorted(vcfdict.keys() , key=lambda (c,s): (c,int(s)))
+
+    topsites = [vcfsites[0]]
+    for c,s in vcfsites[1:]:
+        v = vcfdict[(c,s)]
         if filter_fn(v): continue #skip records that trigger filter_fn
-        if topsites.has_key(k[0]):
-            if max_fn(v) > max_fn(vcfdict[(k[0],topsites[k[0]])]):
-                topsites[k[0]] = k[1]
+        
+        if topsites[-1][0] == c and int(s) - int(topsites[-1][1]) < min_spacing:
+            if max_fn(v) > max_fn(vcfdict[topsites[-1]]):
+                oldc,oldv = topsites.pop()
+                topsites.append((c,s))
         else:
-            topsites[k[0]] = k[1]
+            topsites.append((c,s))
 
     return topsites
 

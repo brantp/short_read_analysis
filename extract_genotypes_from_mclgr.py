@@ -3,7 +3,10 @@
 '''
 import os,sys,re, Aln, Util
 from collections import defaultdict
-from Bio import pairwise2
+try:
+    from Bio import pairwise2
+except:
+    print >>sys.stderr, 'biopython unavailable'
 from subprocess import Popen, PIPE
 from cStringIO import StringIO
 
