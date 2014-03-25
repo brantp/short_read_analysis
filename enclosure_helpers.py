@@ -55,13 +55,13 @@ def write_wigs_pheno(phenos,outfile):
 
 from variant_detection import write_wigs_genotypes
 
-def write_wigs_all_simple(vcf_obj,db_name,query_d,outbase,by_locus=False):
+def write_wigs_all_simple(vcf_obj,db_name,query_d,outbase,by_locus=False,**kwargs):
     '''
     query_d dictionary represents columns and values from <db_name> spreadsheet to require for inclusion
     for example, query_d={'site':['L'],'enc':['SW']}
     '''
     indiv_lists = indiv_lists_by_enc(vcf_obj,db_name,query_d)
-    phenos = wigs_phenotypes_from_DB(db_name,indiv_lists)
+    phenos = wigs_phenotypes_from_DB(db_name,indiv_lists,**kwargs)
 
     open(outbase+'-wigs-indivs.tuple','w').write(indiv_lists.__repr__())
     write_wigs_pheno(phenos,outbase+'-wigs-pheno.txt')

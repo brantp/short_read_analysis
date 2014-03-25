@@ -51,6 +51,7 @@ MAX_RETRY = 2
 MERGE_BAMS_ABOVE = 50
 JOB_MEM_OVERHEAD = 1024 #RAM in MB to request above --gatk_ram value for slurm jobs
 DURATION_DEFAULT = 2880
+MAX_DURATION = 10000 #used for "hard" jobs
 
 #temporarily hardcoded genotyper parallelization for "hard" jobs (jobs run more than MAX_RETRY in genotyping) [GATK ONLY]
 GATK_PAR_NT = 8
@@ -339,6 +340,7 @@ def call_variants_gatk_lsf(bams,ref,outroot,vcfbase,njobs=100,gatk_program='Unif
             if nprevsub < MAX_RETRY:
                 ser_to_run_dict[partvcf] = run_safe.safe_script(cmd,partvcf,force_write=True)
             else:
+                duration=MAX_DURATION
                 print >> sys.stderr, '\n%s failed %s previous runs; %s thread X %s core invoked' % (partvcf,nprevsub,GATK_PAR_NT,GATK_PAR_NCT)
                 cmd += ' -nt %s -nct %s' % (GATK_PAR_NT,GATK_PAR_NCT)
                 par_to_run_dict[partvcf] = run_safe.safe_script(cmd,partvcf,force_write=True)

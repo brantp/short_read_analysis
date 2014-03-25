@@ -97,7 +97,7 @@ def sample_fq_from_expected(expected_fq_d):
     return fq_by_sample
 
 multiplex_idx_db = 'DB_multiplex_indices'
-tcp_host = 'heroint1'
+tcp_host = 'heroint3'
 MAX_RETRY = 3
 
 map_reads_exec = 'map_reads_by_indiv-stampy.py'
@@ -175,12 +175,12 @@ if __name__ == '__main__':
                 glob_key = os.path.join(d['datapath'], \
                                         'reads_by_individual', \
                                         '%s_lane%s_index%s_trim' % (d['flowcell'],d['lane'],d.get('index',None)), \
-                                        '%s*%s' % (ind,get_ext(r1)) )
+                                        '%s_*%s' % (ind,get_ext(r1)) )
                 expected_fq_d[glob_key] = 2
                 glob_key = os.path.join(d['datapath'], \
                                         'reads_by_individual', \
                                         '%s_lane%s_index%s_merge' % (d['flowcell'],d['lane'],d.get('index',None)), \
-                                        '%s*%s' % (ind,get_ext(r1)) )
+                                        '%s_*%s' % (ind,get_ext(r1)) )
                 expected_fq_d[glob_key] = 1
             else:
                 raise ValueError, 'single reads unsupported'

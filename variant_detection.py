@@ -18,7 +18,10 @@ def smartopen(filename,*args,**kwargs):
 
 
 
-def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cut=None,store_indiv_prefix=None,drop_indiv=None,keep_indiv=None,write_thresholded_vcf=None,write_fasta_base=None,ref_in_fasta=False,regions=None,multiallelic_sites='skip',noGQ='skip'):
+def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cut=None, \
+             store_indiv_prefix=None,drop_indiv=None,keep_indiv=None, \
+             write_thresholded_vcf=None,write_fasta_base=None,ref_in_fasta=False, \
+             regions=None,multiallelic_sites='skip',noGQ='skip'):
     '''populates and returns a site:properties dict from vcf file
 
     if <store_only> is set, must be a list of fields to retain
@@ -260,7 +263,10 @@ def add_custom_fields(sd):
     else:
         sd['mafbyhwe'] = sd['maf'] / numpy.log1p(sd['hwe'])
     sd['fh'] = fract_het(sd['indiv_gt'])
-    sd['totcov'] = sum([int(gtd['DP']) for gtd in sd['indiv_gt'].values()])
+    try:
+        sd['totcov'] = sum([int(gtd['DP']) for gtd in sd['indiv_gt'].values()])
+    except:
+        pass
     sd['numind'] = len(sd['indiv_gt'])
     sd['aac'] = aac(sd['indiv_gt'])
     sd['aaf'] = sd['aac'] / (2. * len(sd['indiv_gt']))
@@ -526,10 +532,9 @@ def add_vcf_data(ref_vcf,*vcfs):
 def one_site_per_chrom(vcfdict, max_fn=lambda v: len(v['indiv_gt']), filter_fn=lambda v: v['maf'] < 0.05, min_spacing=10000):
     '''given a vcf dictionary per load_vcf
 
-    takes one site per chromosome (key[0]) for which filter_fn[v] == False and
-    which maximizes max_fn[v]
-
-    returns dictionary {chrom:site}
+    returns list of tuples (chrom,site) such that remaining sites return FALSE for filter_fn,
+    are separated by more than min_spacing bp,
+    and maximize max_fn within that window
     '''
 
     vcfsites = sorted(vcfdict.keys() , key=lambda (c,s): (c,int(s)))
