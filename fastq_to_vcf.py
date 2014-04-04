@@ -183,8 +183,13 @@ if __name__ == '__main__':
                                         '%s_*%s' % (ind,get_ext(r1)) )
                 expected_fq_d[glob_key] = 1
             else:
-                raise ValueError, 'single reads unsupported'
-                #expected_fq_d[glob_key] = 1
+                #raise ValueError, 'single reads unsupported'
+                glob_key = os.path.join(d['datapath'], \
+                                        'reads_by_individual', \
+                                        '%s_lane%s_index%s' % (d['flowcell'],d['lane'],d.get('index',None)), \
+                                        '%s_*%s' % (ind,get_ext(r1)) )                
+                
+                expected_fq_d[glob_key] = 1
         else:
             errstr = 'no fastq for %s' % d
             raise ValueError, errstr
