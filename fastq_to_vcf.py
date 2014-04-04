@@ -163,7 +163,9 @@ if __name__ == '__main__':
             if d['sampleid'] in transtable:
                 ind = transtable[d['sampleid']]
             else:
-                print >> sys.stderr, '%s not in transtable' % d['sampleid'] 
+                print >> sys.stderr, '%s not in transtable' % d['sampleid']
+                #retain legacy ID if not translatable
+                continue
         else:
             ind = d['sampleid']
             
