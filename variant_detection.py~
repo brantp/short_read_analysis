@@ -101,13 +101,11 @@ def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cu
                 all_drop = set([])
             if write_thresholded_vcf is not None:
                 newheaders = headers[:FORMAT+1]+[h for h in headers[FORMAT+1:] if h in all_keep]
-                newhline = '#'+('\t'.join(newheaders))
+                newhline = '#'+('\t'.join(newheaders))+'\n'
                 ofh.write(newhline)
 
         elif line.startswith('#'):
-            if write_thresholded_vcf is not None:
-                ofh.write(line)
-                continue
+            continue
         else:
             #extract site stats
             fields = line.split('\t')
@@ -151,7 +149,7 @@ def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cu
                 if keep_indiv is not None and not ind in keep_indiv: continue
                 if ':' in gt:
                     this_gt = dict(zip(fields[FORMAT].split(':'),gt.split(':')))
-                    if this_gt.has_key('GQ') and this_gt['GQ'] != '.':
+                    if this_gt.has_key('GQ'):
                         if indiv_gt_phred_cut is None or float(this_gt['GQ']) >= indiv_gt_phred_cut:
                             sd['indiv_gt'][ind] = this_gt
                     else:
@@ -230,10 +228,9 @@ def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cu
                                            (';'.join(['%s=%s' % (f,sd[f]) for f in info_f])), \
                                            (':'.join(format_f))] +\
                                           [':'.join([sd['indiv_gt'][ind][f] for f in format_f]) if ind in sd['indiv_gt'] else './.' \
-                                           for ind in newheaders[FORMAT+1:]]))# + '\n'
+                                           for ind in newheaders[FORMAT+1:]])) + '\n'
                     #replace this with line reconstituted from sd
-                    newdline = newdline.strip()
-                    if newdline: ofh.write(newdline + '\n')
+                    ofh.write(newdline)
                 if store_only is not None:
                     keep_sd = {}
                     for k in sd:
@@ -303,7 +300,6 @@ def genotype_allele_counts(sd):
 def reads_dropped_by_allele(sd):
     reads_dropped = dict.fromkeys(range(len(sd['ALT'].split(','))+1),0)
     for d in sd['indiv_gt'].values():
-        if not d.has_key('AD'): continue
         counts = numpy.array(d['AD'].split(','),dtype=int)
         for k in list(set(d['GT'].split('/'))):
             reads_dropped[int(k)] += counts[int(k)]
@@ -361,78 +357,6 @@ def get_allele_lookup(sd):
     nalleles = get_num_alleles(sd)
     return dict(zip(map(str,range(nalleles)), [sd['REF']]+sd['ALT'].split(',')))
 
-def sd_from_htseq_vc(vc):
-    sd = {}
-    sd['CHROM'] = vc.pos.chrom
-    sd['POS'] = vc.pos.pos
-    sd['REF'] = vc.ref
-    sd['ALT'] = ','.join(vc.alt)
-    sd.update(vc.info)
-    for k,v in sd.items():
-        if type(v) == list:
-            sd[k] = ','.join(map(str,v))
-    sd['indiv_gt'] = dict([(k,v) for k,v in vc.samples.items() if v.has_key('PL')])
-    return sd
-
-def process_htseq_vc(vc,indiv_gt_phred_cut):
-    vc.samples = dict([(k,v) for k,v in vc.samples.items()
-                       if float(v.get('GQ',0)) >= indiv_gt_phred_cut])
-    if len(vc.samples) > 0:
-        vc.info['fh'] = fract_het(vc.samples)
-        vc.info['mac'] = maf(vc.samples)
-    else:
-        vc.info['fh'] = 0
-        vc.info['mac'] = 0
-    vc.info['numind'] = len(vc.samples)
-    vc.info['QUAL'] = float(vc.qual)
-    return vc
-
-def minimal_sd(sd,sd_keys,indiv_gt_keys):
-    minsd = {}
-    for k in sd_keys:
-        minsd[k] = sd.get(k,None)
-    if indiv_gt_keys:
-        minsd['indiv_gt'] = {}
-        for ind,gtd in sd['indiv_gt'].items():
-            minsd['indiv_gt'][ind] = {}
-            for k in indiv_gt_keys:
-                minsd['indiv_gt'][ind][k] = sd['indiv_gt'][ind][k]
-    return minsd
-
-def load_minimal_vcf_htseq(vcf_file,cut_fn=lambda sd: True,indiv_gt_phred_cut=20, \
-                           multiallelic_fn=lambda sd: not ',' in sd['ALT'], \
-                           sd_keys=['REF','ALT'], indiv_gt_keys=['GT','PL'],min_ind=0,min_qual=0,
-                           max_sites=numpy.inf,max_lines=numpy.inf):
-    import HTSeq
-    vcfr = HTSeq.VCF_Reader(vcf_file)
-    vcfr.make_info_dict()
-    vcfr.parse_meta()
-    passed = 0
-
-    min_vcf_obj = {}
-    tick = time.time()
-    for i,vc in enumerate(vcfr):
-        if len(min_vcf_obj)>=max_sites or i>max_lines:
-            break
-        if i % 1000 == 0:
-            thistick = time.time() - tick
-            print >> sys.stderr,'\r', i,len(min_vcf_obj),thistick,thistick/(i+1),
-        if vc.qual < min_qual: continue
-        if len([v for v in vc.samples.values() if v['GT'][0] != '.']) < min_ind: continue
-        vc.unpack_info(vcfr.infodict)
-        vc = process_htseq_vc(vc,indiv_gt_phred_cut)
-        if not cut_fn(vc.info): continue
-        passed += 1
-        sd = sd_from_htseq_vc(vc)
-        if len(vc.alt) > 1:
-            bsd = multiallelic_fn(sd)
-            if bsd:
-                min_vcf_obj[(vc.pos.chrom,vc.pos.pos)] = minimal_sd(bsd,sd_keys,indiv_gt_keys)
-        else:
-            min_vcf_obj[(vc.pos.chrom,vc.pos.pos)] = minimal_sd(sd,sd_keys,indiv_gt_keys)
-
-    return min_vcf_obj
-
 def biallelic_sd(sd,GQ_method='nextbest',transfer_fields=['CHROM','POS','AN','QUAL','QD','MQ0'],skip_fields=['indiv_gt']):
     new_sd = {}
     new_sd['indiv_gt'] = {}
@@ -446,7 +370,6 @@ def biallelic_sd(sd,GQ_method='nextbest',transfer_fields=['CHROM','POS','AN','QU
     
     delta_L = 0
     for ind,gtd in sd['indiv_gt'].items():
-        if not (gtd.has_key('AD') and gtd.has_key('PL')): continue
         new_gtd = get_keep_gtd(gtd,nalleles,keep_alleles,old2new,new2old,GQ_method)
         change = float(new_gtd['GQ']) - float(gtd['GQ'])
         delta_L += change

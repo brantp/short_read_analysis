@@ -1,8 +1,11 @@
 #!/usr/bin/env python
 
-queue = 'normal_serial'
+queue = 'general'
+max_job_duration = 1440
+job_ram = (2+1)*1024
+job_batches = 500
 
-import os,sys,LSF,run_safe
+import os,sys,SLURM,run_safe
 
 geno,pheno,runs = sys.argv[1:]
 
@@ -17,4 +20,5 @@ for i in range(int(runs)):
     run_safe.add_cmd(trd,donedir+str(i),'random_wigs.py %s %s %s' % (geno,pheno,i) ,force_write=True)
 
 
-LSF.lsf_run_until_done(trd,logfile,queue,'','random-wigs',1000,3)
+#LSF.lsf_run_until_done(trd,logfile,queue,'','random-wigs',1000,3)
+SLURM.run_until_done(trd,'random-wigs',logfile,max_job_duration,job_ram,job_batches,queue,MAX_RETRY=3)
