@@ -893,6 +893,16 @@ if __name__ == '__main__':
         print >> sys.stderr, 'the following inputs are missing:\n\t%s' % ('\n\t'.join(missing_bams))
         raise ValueError, 'missing bams for merge'
 
+
+
+    #PERFORM REALIGNMENT IF SELECTED
+    if opts.realign:
+        prealn_rg_ref_bams = rg_ref_bams
+        #do realignment
+        realigned_bams = realign_bams_lsf(rg_ref_bams,reference_fasta,outroot,njobs,min_ind_realign,queue=opts.lsf_queue,gatk_ram=gatkRAM,force_links=opts.force_realign,fallback_queue=opts.fallback_queue)
+        rg_ref_bams = realigned_bams
+        
+
     #if vcfname is None:
     #    print >> sys.stderr, 'alignment complete; subsequent steps only invoked if -v / --vcfname set'
     #    sys.exit(0)
@@ -920,13 +930,6 @@ if __name__ == '__main__':
             print >> sys.stderr, 'merge invoked, donefile %s not found' % mergebam+'.done'
             raise OSError
 
-    #PERFORM REALIGNMENT IF SELECTED
-    if opts.realign:
-        #do realignment
-        realigned_bams = realign_bams_lsf(rg_ref_bams,reference_fasta,outroot,njobs,min_ind_realign,queue=opts.lsf_queue,gatk_ram=gatkRAM,force_links=opts.force_realign,fallback_queue=opts.fallback_queue)
-        
-        
-    
     #COMPILE BAMS FROM READBASES
     if vcfname is not None:
         if opts.target_regions:

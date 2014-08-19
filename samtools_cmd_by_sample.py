@@ -10,7 +10,7 @@ if compress is one of [ gzip, bgzip ] the indicated compression will be used on 
 (uses get_bam_rg_by_sample.py for extracting sample subsets; py_util/SLURM.py for parallellism)
 '''
 
-MAX_DUR = 60 #1 hour
+MAX_DUR = 1440 #1 day
 MAX_RAM = 2*1024 #2GB ram
 PARTITION = 'general' #SLURM queue 'general'
 
