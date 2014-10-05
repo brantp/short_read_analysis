@@ -19,7 +19,7 @@ import os,sys
 
 from glob import glob
 
-bamfile, samtools_cmd, outroot, compress = sys.argv[1:]
+bamfile, samtools_cmd, outroot, compress, ext = sys.argv[1:]
 
 if compress in ('gzip','bgzip'):
     compress_ext = '.%s.gz' % compress
@@ -45,7 +45,7 @@ trd = {}
 
 for sf in sample_files:
     sm = os.path.basename(sf).rsplit('.',2)[0]
-    outfile = os.path.join(outroot, '%s-%s-%s%s' % (bambase, sm, stcmdstr, compress_ext))
+    outfile = os.path.join(outroot, '%s-%s-%s%s%s' % (bambase, sm, stcmdstr, ext, compress_ext))
     cmd = 'samtools view -hR %s %s | samtools view -bS - | samtools %s /dev/stdin %s> %s' % (sf, bamfile, samtools_cmd, compress_cmd, outfile)
     slurmbase = os.path.join(outroot,'%s-%s-%s' % (bambase, sm, stcmdstr))
     run_safe.add_cmd(trd, slurmbase, cmd,force_write=True)

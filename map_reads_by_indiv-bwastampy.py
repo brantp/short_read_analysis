@@ -38,6 +38,7 @@ picardRAM = 4
 #gatk2_jar = '/n/home08/brantp/src/GenomeAnalysisTK-2.2-16-g9f648cb/GenomeAnalysisTK.jar'
 #gatk2_jar = '/n/home08/brantp/src/GenomeAnalysisTK-2.4-3-g2a7af43/GenomeAnalysisTK.jar'
 gatk2_jar = '/n/home08/brantp/src/GenomeAnalysisTK-2.7-2-g6bda569/GenomeAnalysisTK.jar'
+gatk3_jar = '/n/home08/brantp/src/GenomeAnalysisTK-3.2-2/GenomeAnalysisTK.jar'
 gatk_jar = gatk2_jar
 #picard_jar_root = '/n/home08/brantp/src/picard_svn/trunk/dist'
 picard_jar_root = '/n/home08/brantp/src/picard_svn_20130220/trunk/dist'
@@ -46,7 +47,7 @@ picard_seqdict_jar = os.path.join(picard_jar_root,'CreateSequenceDictionary.jar'
 #stampy_module = 'bio/stampy-1.0.18'
 #stampy set below; now uses opts.scheduler to discriminate centos5/centos6
 
-min_ind_realign = 12
+min_ind_realign = 6
 MAX_RETRY = 2
 MERGE_BAMS_ABOVE = 50
 JOB_MEM_OVERHEAD = 1024 #RAM in MB to request above --gatk_ram value for slurm jobs
@@ -717,10 +718,14 @@ if __name__ == '__main__':
         fc = os.path.basename(readroot)
         if rb.startswith('pass'): continue
 
-        if isinstance(readfile,tuple):
-            samfbase = os.path.join(readroot,'%s_pair-%s_stampy%s' % (rb,tb,bp))
+        if opts.bwa:
+            bwa_flag_str = 'bwa'
         else:
-            samfbase = os.path.join(readroot,'%s-%s_stampy%s' % (rb,tb,bp))
+            bwa_flag_str = ''
+        if isinstance(readfile,tuple):
+            samfbase = os.path.join(readroot,'%s_pair-%s_%sstampy%s' % (rb,tb,bwa_flag_str,bp))
+        else:
+            samfbase = os.path.join(readroot,'%s-%s_%sstampy%s' % (rb,tb,bwa_flag_str,bp))
 
         #sortbam = samf[:-3] + 'sort.bam'
         rg_ref_bam = samfbase + '.rg_refsort.bam'
@@ -900,34 +905,6 @@ if __name__ == '__main__':
 
             #CHECK BAMS WITH samtools
             to_run=[] #comment out when re-enabling check
-            """
-            #DISABLE
-            print >> sys.stderr, 'run samtools quick check on %s bams:' % len(to_run)
-            rerun = []
-            for i,b in enumerate(to_run):
-                print >> sys.stderr, '\r%s / %s' % (i+1,len(to_run)),
-                se = subprocess.Popen('samtools view %s > /dev/null' % b,shell=True,stderr=subprocess.PIPE).stderr.read()
-                if se.strip():
-                    rerun.append(b)
-
-            to_run = rerun
-            
-            if rerun:
-                to_run_dict = {}
-                print >> sys.stderr, '%s bam(s) failed; remove and re-run' % len(rerun)
-                for rb in rerun:
-                    ret = os.system('rm -rf %s %s %s' % (rb.replace('.realigned.reduced.bam','.Realign*'), \
-                                                         rb.replace('.realigned.reduced.bam','-realign*'), \
-                                                         rb.replace('.realigned.reduced.bam','.realign*') ))
-                    bam = rb.replace('.realigned.reduced.bam','.bam')
-                    rr_done = os.path.splitext(bam)[0] + '.realigned.reduced'
-                    rr_cmd = 'realign_reduce_bam.py %s %s' % (bam,reference_fasta)
-                    run_safe.add_cmd(to_run_dict,rr_done,rr_cmd,force_write=True)
-
-                print >> sys.stderr, to_run_dict
-            runs +=1
-            #\DISABLE
-            """
 
         #switch rg_ref_bams to reduced
         orig_rg_ref_bams = rg_ref_bams
@@ -940,6 +917,15 @@ if __name__ == '__main__':
     if len(missing_bams) != 0:
         print >> sys.stderr, 'the following inputs are missing:\n\t%s' % ('\n\t'.join(missing_bams))
         raise ValueError, 'missing bams for merge'
+
+
+    #PERFORM REALIGNMENT IF SELECTED
+    if opts.realign:
+        prealn_rg_ref_bams = rg_ref_bams
+        #do realignment
+        realigned_bams = realign_bams_lsf(rg_ref_bams,reference_fasta,outroot,njobs,min_ind_realign,queue=opts.lsf_queue,gatk_ram=gatkRAM,force_links=opts.force_realign,fallback_queue=opts.fallback_queue)
+        rg_ref_bams = realigned_bams
+        
 
     #if vcfname is None:
     #    print >> sys.stderr, 'alignment complete; subsequent steps only invoked if -v / --vcfname set'
@@ -968,12 +954,12 @@ if __name__ == '__main__':
             print >> sys.stderr, 'merge invoked, donefile %s not found' % mergebam+'.done'
             raise OSError
 
-    #PERFORM REALIGNMENT IF SELECTED
-    if opts.realign:
-        #do realignment
-        realigned_bams = realign_bams_lsf(rg_ref_bams,reference_fasta,outroot,njobs,min_ind_realign,queue=opts.lsf_queue,gatk_ram=gatkRAM,force_links=opts.force_realign,fallback_queue=opts.fallback_queue)
-        
-        
+        #split merged bams to single file for each individuals
+        byID_path = os.path.join(outroot,bamname+'-sample_bams')
+        byID_splitcmd = "samtools_cmd_by_sample.py %s 'view -b' %s None '.bam'" % (mergebam,byID_path)
+        ret = os.system(byID_splitcmd)
+        if ret != 0:
+            sys.exit(1)
     
     #COMPILE BAMS FROM READBASES
     if vcfname is not None:
